@@ -8,7 +8,20 @@
 
 import AppKit
 
-// TODO: NSApplicationDelegate that on applicationDidFinishLaunching:
-//   - instantiates MenuBarController
-//   - builds the module registry (DiskActivityModule + InputOdometerModule)
-//   - wires launch-at-login via SMAppService.mainApp (PRD §1.5)
+/// Bridges AppKit's application lifecycle into the SwiftUI app. Phase 2 starts the
+/// Disk Activity sampling pipeline on launch so its output is observable in the
+/// console; the menu bar UI, module registry, and launch-at-login wiring land in
+/// later phases.
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+
+    private let diskActivity = DiskActivityModule()
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        diskActivity.start()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        diskActivity.stop()
+    }
+}
