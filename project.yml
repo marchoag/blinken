@@ -1,0 +1,86 @@
+# project.yml — xcodegen spec for Blinken
+# Regenerate the .xcodeproj after editing this file or adding/removing sources:
+#   xcodegen generate
+# The .xcodeproj is NOT committed; this file is the source of truth (see build guide §2).
+
+name: Blinken
+
+options:
+  bundleIdPrefix: com.axiomic
+  deploymentTarget:
+    macOS: "15.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+# Project-wide build settings inherited by all targets.
+settings:
+  base:
+    SWIFT_VERSION: "6.0"                 # Swift 6 language mode (strict concurrency on)
+    MACOSX_DEPLOYMENT_TARGET: "15.0"
+    ARCHS: "arm64 x86_64"                # Universal 2 (Apple Silicon + Intel)
+    SWIFT_STRICT_CONCURRENCY: complete
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    # Code signing: "Apple Development" for dev builds. The release script swaps in
+    # the Developer ID Application identity (PRD §3.3). Set DEVELOPMENT_TEAM in Xcode
+    # (Signing & Capabilities) — left unset here so the repo carries no team ID.
+    CODE_SIGN_STYLE: Automatic
+    CODE_SIGN_IDENTITY: "Apple Development"
+
+# Pinned SQLite wrapper for the InputOdometer CounterStore (PRD §2.2).
+packages:
+  GRDB:
+    url: https://github.com/groue/GRDB.swift
+    exactVersion: "7.10.0"
+
+targets:
+  Blinken:
+    type: application
+    platform: macOS
+    sources:
+      - path: Blinken
+    dependencies:
+      - package: GRDB
+        product: GRDB
+    settings:
+      base:
+        PRODUCT_NAME: Blinken
+        PRODUCT_BUNDLE_IDENTIFIER: com.axiomic.blinken
+        INFOPLIST_FILE: Blinken/App/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: Blinken/Resources/Blinken.entitlements
+        ENABLE_HARDENED_RUNTIME: YES        # required for notarization (PRD §3.3)
+        # App Sandbox stays OFF — governed by Blinken.entitlements (PRD §3.2);
+        # ENABLE_APP_SANDBOX intentionally not set so Xcode doesn't auto-manage it.
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/../Frameworks"
+    configs:
+      debug:
+        ONLY_ACTIVE_ARCH: YES               # fast local builds (native arch only)
+      release:
+        ONLY_ACTIVE_ARCH: NO                # full Universal 2 binary for distribution
+
+  BlinkenTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: BlinkenTests
+    dependencies:
+      - target: Blinken
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.axiomic.blinken.tests
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  Blinken:
+    build:
+      targets:
+        Blinken: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - BlinkenTests
