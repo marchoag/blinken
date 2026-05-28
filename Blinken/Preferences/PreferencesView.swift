@@ -3,11 +3,12 @@
 //  Blinken
 //
 //  SwiftUI preferences pane (hosted in an NSWindow by MenuBarController):
-//  LED color + glow, swap-bar color, launch-at-login, and an About footer
-//  (PRD §1.5).
+//  appearance controls, launch-at-login, Reset, and an About header with the
+//  LED rendered as the app's "logo" (PRD §1.5).
 //
 
 import SwiftUI
+import AppKit
 
 struct PreferencesView: View {
     @ObservedObject private var settings = AppSettings.shared
@@ -31,29 +32,73 @@ struct PreferencesView: View {
             }
 
             Section {
-                VStack(spacing: 4) {
-                    // SwiftUI's Text parses markdown — the link inside renders as a
-                    // tappable link only on "Marc Hoag".
-                    Text("Made with ❤️ in Marin County, CA by [Marc Hoag](https://marchoag.com)")
-                    Link("© 2026 Axiomic, LLC", destination: URL(string: "https://axiomic.ai")!)
-                    Text(versionString).font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    Spacer()
+                    Button("Reset Appearance to Defaults") {
+                        settings.resetAppearanceToDefaults()
+                    }
+                    Spacer()
                 }
-                .frame(maxWidth: .infinity, alignment: .center)
+            }
+
+            Section {
+                HStack(alignment: .top, spacing: 14) {
+                    LEDLogoView()
+                        .frame(width: 80, height: 80)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Blinken").font(.title3).bold()
+                        Text(versionString).font(.caption).foregroundStyle(.secondary)
+                        Text("Made with ❤️ in Marin County, CA by [Marc Hoag](https://marchoag.com)")
+                            .font(.callout)
+                            .padding(.top, 2)
+                        HStack(spacing: 6) {
+                            Link("© 2026 Axiomic, LLC", destination: URL(string: "https://axiomic.ai")!)
+                            Text("·").foregroundStyle(.secondary)
+                            Link("Send Feedback", destination: Self.feedbackURL)
+                        }
+                        .font(.callout)
+                    }
+                    Spacer(minLength: 0)
+                }
                 .padding(.vertical, 4)
             }
         }
         .formStyle(.grouped)
         .scrollIndicators(.hidden)
-        // Fixed size sized to fit all sections (incl. the About footer) without
-        // scrolling. Avoids the NSHostingController preferredContentSize constraint
-        // loop that a self-sizing window triggers.
-        .frame(width: 400, height: 500)
+        .frame(width: 420, height: 600)
     }
+
+    private static let feedbackURL = URL(string: "mailto:marc@marchoag.com?subject=Blinken:%20")!
 
     private var versionString: String {
         let info = Bundle.main.infoDictionary
         let v = info?["CFBundleShortVersionString"] as? String ?? "1.0"
         let b = info?["CFBundleVersion"] as? String ?? "1"
-        return "Blinken \(v) (\(b))"
+        return "Version \(v) (\(b))"
+    }
+}
+
+/// Hosts an `LEDView` at large size as the app's "logo" in About.
+/// Picks up live color + glow from `AppSettings` so the logo previews the
+/// user's chosen aesthetic.
+private struct LEDLogoView: NSViewRepresentable {
+    @ObservedObject private var settings = AppSettings.shared
+
+    func makeNSView(context: Context) -> LEDView {
+        let view = LEDView(frame: .zero)
+        view.brightness = 1.0      // statically lit at full brightness
+        view.diameter = 52
+        apply(to: view)
+        return view
+    }
+
+    func updateNSView(_ view: LEDView, context: Context) {
+        view.brightness = 1.0
+        apply(to: view)
+    }
+
+    private func apply(to view: LEDView) {
+        view.tintColor = settings.ledNSColor
+        view.glowIntensity = CGFloat(settings.glowIntensity)
     }
 }
