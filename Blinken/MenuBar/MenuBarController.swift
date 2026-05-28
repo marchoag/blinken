@@ -87,9 +87,12 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             ledView.brightness = max(LEDView.minBrightness, min(1.0, CGFloat(ratio)))
         }
 
-        // Swap bar: fill fraction + live tint from settings.
-        let total = swap.swapTotalBytes
-        let fraction: CGFloat = total > 0 ? CGFloat(swap.swapUsedBytes) / CGFloat(total) : 0
+        // Swap bar: fraction = swap used / total system RAM. Stable denominator;
+        // the kernel-allocated pool grows on demand on macOS, so used/RAM is what
+        // actually signals memory pressure. Live tint from settings.
+        let ram = swap.systemRAMBytes
+        let raw = ram > 0 ? CGFloat(swap.swapUsedBytes) / CGFloat(ram) : 0
+        let fraction = max(0, min(1, raw))
         if swapBarView.usedFraction != fraction { swapBarView.usedFraction = fraction }
         if swapBarView.tintColor != settings.swapNSColor { swapBarView.tintColor = settings.swapNSColor }
     }
@@ -148,8 +151,11 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         readItem.title  = "Read:   \(Self.formatBytes(aggregator.sessionBytesRead))   (\(Self.formatBytes(aggregator.totalBytesRead)))"
         writeItem.title = "Write:   \(Self.formatBytes(aggregator.sessionBytesWritten))   (\(Self.formatBytes(aggregator.totalBytesWritten)))"
 
-        // Memory: swap used / currently-allocated swap + kernel pressure level.
-        swapItem.title = "Swap used:   \(Self.formatBytes(swap.swapUsedBytes)) / \(Self.formatBytes(swap.swapTotalBytes))"
+        // Memory: swap used + % of system RAM (stable reference) + pressure level.
+        let used = swap.swapUsedBytes
+        let ram = swap.systemRAMBytes
+        let pct = ram > 0 ? Int((Double(used) / Double(ram) * 100).rounded()) : 0
+        swapItem.title = "Swap used:   \(Self.formatBytes(used))   (\(pct)% of \(Self.formatBytes(ram)) RAM)"
         pressureItem.title = "Pressure:   \(swap.pressure.label)"
     }
 
@@ -172,13 +178,29 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             window.title = "Blinken Preferences"
             window.styleMask = [.titled, .closable]
             window.isReleasedWhenClosed = false
-            // macOS Settings convention: open centered on the main display on first
-            // create; the user can move it and subsequent opens preserve position.
-            window.center()
+            // Force the content size so centering math has a stable frame.
+            window.setContentSize(NSSize(width: 400, height: 500))
             preferencesWindow = window
+            // NSWindow.center() only centers horizontally and pins y near the top of
+            // the screen — on a notched display that lands the window against the
+            // notch. Center within the screen's *visible* frame (below menu bar /
+            // above dock) instead.
+            centerOnVisibleFrame(window)
         }
         NSApp.activate(ignoringOtherApps: true)
         preferencesWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    private func centerOnVisibleFrame(_ window: NSWindow) {
+        let screen = statusItem.button?.window?.screen ?? NSScreen.main ?? NSScreen.screens.first
+        guard let visible = screen?.visibleFrame else { window.center(); return }
+        let w = window.frame.width
+        let h = window.frame.height
+        let origin = NSPoint(
+            x: visible.minX + (visible.width - w) / 2,
+            y: visible.minY + (visible.height - h) / 2
+        )
+        window.setFrameOrigin(origin)
     }
 
     @objc private func quit() {

@@ -43,6 +43,11 @@ final class SwapMonitor: ObservableObject {
     /// Latest kernel memory-pressure reading.
     @Published private(set) var pressure: Pressure = .normal
 
+    /// Total physical RAM, captured once at init. Used as the swap bar's stable
+    /// denominator — the kernel-allocated swap pool grows on demand on macOS, so
+    /// `used / pool` slides with usage; `used / RAM` is the real pressure signal.
+    let systemRAMBytes: UInt64 = ProcessInfo.processInfo.physicalMemory
+
     private var timer: Timer?
 
     /// Begins 1Hz polling. Idempotent.
