@@ -6,7 +6,29 @@
 //  monitor, and contributes the LED + swap bar to the menu bar (PRD §2.3).
 //
 
-import AppKit
+import Foundation
 
-// TODO: BlinkenModule conformer wiring DiskStatsSampler → DiskStatsAggregator,
-//       plus SwapMonitor; exposes menuBarView and the disk/memory menu items.
+/// Owns the disk sampling pipeline. Phase 2 wires the sampler → aggregator only;
+/// the swap monitor, menu-bar contribution, and `BlinkenModule` conformance land
+/// with the UI / module-system phase.
+///
+/// Main-actor isolated because it holds the (main-actor) `DiskStatsAggregator`,
+/// which the views observe.
+@MainActor
+final class DiskActivityModule {
+
+    /// Published rate signals for the views to observe.
+    let aggregator = DiskStatsAggregator()
+
+    private lazy var sampler = DiskStatsSampler(aggregator: aggregator)
+
+    /// Begins 120Hz disk sampling.
+    func start() {
+        sampler.start()
+    }
+
+    /// Stops disk sampling.
+    func stop() {
+        sampler.stop()
+    }
+}
