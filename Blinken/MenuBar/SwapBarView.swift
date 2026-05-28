@@ -67,9 +67,22 @@ final class SwapBarView: NSView {
             blue: tint.blueComponent + (warn.blueComponent - tint.blueComponent) * shift,
             alpha: 1.0
         )
-        fill.setFill()
         let fillH = barH * frac
-        NSBezierPath(rect: NSRect(x: rect.minX, y: rect.minY,
-                                  width: rect.width, height: fillH).integral).fill()
+        let fillRect = NSRect(x: rect.minX, y: rect.minY,
+                              width: rect.width, height: fillH).integral
+
+        // Soft outer glow that scales with fill: nearly invisible at idle, intensifies
+        // as the bar climbs (and the fill color naturally lerps warm via `shift`), so
+        // a deep-swap state visibly warms — echoes the LED's behavior in a quieter
+        // register appropriate to a level indicator.
+        NSGraphicsContext.saveGraphicsState()
+        let glow = NSShadow()
+        glow.shadowColor = fill.withAlphaComponent(0.55 * frac)
+        glow.shadowBlurRadius = 4 * frac
+        glow.shadowOffset = .zero
+        glow.set()
+        fill.setFill()
+        NSBezierPath(rect: fillRect).fill()
+        NSGraphicsContext.restoreGraphicsState()
     }
 }
