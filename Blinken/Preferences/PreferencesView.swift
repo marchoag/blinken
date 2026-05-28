@@ -41,8 +41,10 @@ struct PreferencesView: View {
             }
         }
         .formStyle(.grouped)
-        // Fixed width; height is driven by content (the host uses preferredContentSize).
-        .frame(width: 400)
+        // Fixed size sized to fit all sections (incl. the About footer) without
+        // scrolling. Avoids the NSHostingController preferredContentSize constraint
+        // loop that a self-sizing window triggers.
+        .frame(width: 400, height: 470)
     }
 
     private var versionString: String {

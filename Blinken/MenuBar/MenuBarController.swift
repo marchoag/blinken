@@ -143,8 +143,6 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     @objc private func openPreferences() {
         if preferencesWindow == nil {
             let hosting = NSHostingController(rootView: PreferencesView())
-            // Size the window to the SwiftUI content's ideal height (no scrolling).
-            hosting.sizingOptions = [.preferredContentSize]
             let window = NSWindow(contentViewController: hosting)
             window.title = "Blinken Preferences"
             window.styleMask = [.titled, .closable]
