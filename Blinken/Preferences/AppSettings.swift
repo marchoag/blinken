@@ -2,9 +2,9 @@
 //  AppSettings.swift
 //  Blinken
 //
-//  App-wide user preferences (LED color, glow intensity, launch-at-login),
-//  persisted in UserDefaults and shared between the SwiftUI Settings pane and
-//  the AppKit menu bar (PRD §1.5).
+//  App-wide user preferences (LED color, glow intensity, swap-bar color,
+//  launch-at-login), persisted in UserDefaults and shared between the SwiftUI
+//  Settings pane and the AppKit menu bar (PRD §1.5).
 //
 
 import SwiftUI
@@ -24,18 +24,23 @@ final class AppSettings: ObservableObject {
 
     private enum Key {
         static let glowIntensity = "glowIntensity"
-        static let colorR = "ledColorR", colorG = "ledColorG", colorB = "ledColorB"
+        static let ledR = "ledColorR", ledG = "ledColorG", ledB = "ledColorB"
+        static let swapR = "swapColorR", swapG = "swapColorG", swapB = "swapColorB"
     }
 
     /// Classic HDD-LED red.
-    static let defaultColor = Color(.sRGB, red: 0.88, green: 0.11, blue: 0.11)
+    static let defaultLEDColor = Color(.sRGB, red: 0.88, green: 0.11, blue: 0.11)
+    /// Muted amber (#D4A017) per PRD §1.3.
+    static let defaultSwapColor = Color(.sRGB, red: 0.831, green: 0.627, blue: 0.090)
 
     /// LED tint. Drives the menu bar lamp; persisted as sRGB components.
     @Published var ledColor: Color {
-        didSet {
-            ledNSColor = Self.nsColor(from: ledColor)
-            persistColor()
-        }
+        didSet { ledNSColor = Self.nsColor(from: ledColor); persist(ledColor, Key.ledR, Key.ledG, Key.ledB) }
+    }
+
+    /// Swap-bar tint (used once the swap bar lands).
+    @Published var swapColor: Color {
+        didSet { swapNSColor = Self.nsColor(from: swapColor); persist(swapColor, Key.swapR, Key.swapG, Key.swapB) }
     }
 
     /// Bloom prominence, 0…1 (default 1). Scales the LED's soft glow.
@@ -48,27 +53,34 @@ final class AppSettings: ObservableObject {
         didSet { applyLaunchAtLogin() }
     }
 
-    /// AppKit-side cached color for the LED renderer (avoids per-frame conversion).
+    /// AppKit-side cached colors for the renderers (avoid per-frame conversion).
     private(set) var ledNSColor: NSColor
+    private(set) var swapNSColor: NSColor
 
     private init() {
-        let r = defaults.object(forKey: Key.colorR) as? Double
-        let g = defaults.object(forKey: Key.colorG) as? Double
-        let b = defaults.object(forKey: Key.colorB) as? Double
-        let color: Color = (r != nil && g != nil && b != nil)
-            ? Color(.sRGB, red: r!, green: g!, blue: b!)
-            : Self.defaultColor
-        ledColor = color
-        ledNSColor = Self.nsColor(from: color)
+        let led = Self.loadColor(Key.ledR, Key.ledG, Key.ledB, default: Self.defaultLEDColor)
+        let swap = Self.loadColor(Key.swapR, Key.swapG, Key.swapB, default: Self.defaultSwapColor)
+        ledColor = led
+        swapColor = swap
+        ledNSColor = Self.nsColor(from: led)
+        swapNSColor = Self.nsColor(from: swap)
         glowIntensity = defaults.object(forKey: Key.glowIntensity) as? Double ?? 1.0
         launchAtLogin = (SMAppService.mainApp.status == .enabled)
     }
 
-    private func persistColor() {
-        let ns = ledNSColor
-        defaults.set(Double(ns.redComponent), forKey: Key.colorR)
-        defaults.set(Double(ns.greenComponent), forKey: Key.colorG)
-        defaults.set(Double(ns.blueComponent), forKey: Key.colorB)
+    private static func loadColor(_ rKey: String, _ gKey: String, _ bKey: String, default fallback: Color) -> Color {
+        let d = UserDefaults.standard
+        guard let r = d.object(forKey: rKey) as? Double,
+              let g = d.object(forKey: gKey) as? Double,
+              let b = d.object(forKey: bKey) as? Double else { return fallback }
+        return Color(.sRGB, red: r, green: g, blue: b)
+    }
+
+    private func persist(_ color: Color, _ rKey: String, _ gKey: String, _ bKey: String) {
+        let ns = Self.nsColor(from: color)
+        defaults.set(Double(ns.redComponent), forKey: rKey)
+        defaults.set(Double(ns.greenComponent), forKey: gKey)
+        defaults.set(Double(ns.blueComponent), forKey: bKey)
     }
 
     private static func nsColor(from color: Color) -> NSColor {

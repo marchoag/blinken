@@ -30,9 +30,9 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     init(aggregator: DiskStatsAggregator) {
         self.aggregator = aggregator
-        self.statusItem = NSStatusBar.system.statusItem(withLength: 24)
+        self.statusItem = NSStatusBar.system.statusItem(withLength: 26)
         let thickness = NSStatusBar.system.thickness
-        self.ledView = LEDView(frame: NSRect(x: 0, y: 0, width: 24, height: thickness))
+        self.ledView = LEDView(frame: NSRect(x: 0, y: 0, width: 26, height: thickness))
         super.init()
         configure()
     }
