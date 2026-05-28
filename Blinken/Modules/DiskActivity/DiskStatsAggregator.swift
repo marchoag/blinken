@@ -26,11 +26,12 @@ final class DiskStatsAggregator: ObservableObject {
     // These are immutable cadence/threshold constants read by the (nonisolated)
     // sampler as well as the aggregator, so they're explicitly `nonisolated`.
 
-    /// Disk sampling cadence.
-    nonisolated static let sampleHz = 120
+    /// Nominal sampling cadence (sampler's *active* rate; it throttles down
+    /// when idle). The ring buffer is sized for this rate × `windowSeconds`.
+    nonisolated static let sampleHz = 30
     /// Rolling window length for the P95 ceiling.
     nonisolated static let windowSeconds = 60
-    /// Ring-buffer capacity: 60 seconds × 120 Hz.
+    /// Ring-buffer capacity: 60 seconds × 30 Hz active rate.
     nonisolated static let windowCapacity = sampleHz * windowSeconds
 
     /// Floor for the rolling P95 ceiling. During quiet periods the real P95

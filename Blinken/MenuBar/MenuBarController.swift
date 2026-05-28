@@ -58,10 +58,13 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     // MARK: - Render loop (PRD §1.2)
 
-    /// Pulls the latest aggregated values at ~60Hz and updates both views.
-    /// `.common` run-loop mode keeps it ticking during menu tracking / window drags.
+    /// Pulls the latest aggregated values at ~30Hz and updates both views.
+    /// `.common` run-loop mode keeps it ticking during menu tracking / window
+    /// drags. (Originally 60Hz; halving it cut a lot of idle main-thread
+    /// wakeups, which is what Activity Monitor's "Energy Impact" actually
+    /// measures. 30Hz on a 14pt LED is still indistinguishable to the eye.)
     private func startRenderLoop() {
-        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.renderTick() }
         }
         RunLoop.main.add(timer, forMode: .common)
