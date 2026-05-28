@@ -1,0 +1,10 @@
+{
+    "$schema": "https://openapi.vercel.sh/vercel.json",
+    "redirects": [
+        {
+            "source": "/download",
+            "destination": "https://github.com/marchoag/blinken/releases/latest/download/Blinken.dmg",
+            "permanent": false
+        }
+    ]
+}
