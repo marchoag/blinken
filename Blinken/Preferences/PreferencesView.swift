@@ -16,15 +16,20 @@ struct PreferencesView: View {
     var body: some View {
         Form {
             Section("Disk LED") {
-                ColorPicker("Color", selection: $settings.ledColor, supportsOpacity: false)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Glow intensity")
+                LabeledContent("Color") {
+                    ColorPicker("Color", selection: $settings.ledColor, supportsOpacity: false)
+                        .labelsHidden()
+                }
+                LabeledContent("Glow intensity") {
                     Slider(value: $settings.glowIntensity, in: 0...1)
                 }
             }
 
             Section("Swap bar") {
-                ColorPicker("Color", selection: $settings.swapColor, supportsOpacity: false)
+                LabeledContent("Color") {
+                    ColorPicker("Color", selection: $settings.swapColor, supportsOpacity: false)
+                        .labelsHidden()
+                }
             }
 
             Section("General") {
@@ -42,7 +47,7 @@ struct PreferencesView: View {
             }
 
             Section {
-                HStack(alignment: .top, spacing: 14) {
+                HStack(alignment: .center, spacing: 14) {
                     LEDLogoView()
                         .frame(width: 80, height: 80)
                     VStack(alignment: .leading, spacing: 4) {
@@ -53,7 +58,8 @@ struct PreferencesView: View {
                             .padding(.top, 2)
                         Link("Send Feedback", destination: Self.feedbackURL)
                             .font(.callout)
-                        Link("© 2026 Axiomic, LLC", destination: URL(string: "https://axiomic.ai")!)
+                        // Only "Axiomic, LLC" is the hyperlink — "© 2026" stays plain.
+                        Text("© 2026 [Axiomic, LLC](https://axiomic.ai)")
                             .font(.callout)
                     }
                     Spacer(minLength: 0)
