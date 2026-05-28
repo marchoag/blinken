@@ -7,6 +7,7 @@
 //
 
 import AppKit
+import SwiftUI
 
 /// Owns the menu bar status item: hosts the `LEDView`, drives its brightness from
 /// the `DiskStatsAggregator` on a ~60Hz render loop, and presents the dropdown.
@@ -22,18 +23,16 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     private var renderTimer: Timer?
     private var menuRefreshTimer: Timer?
-
-    /// PRD §1.5 preference (slider 0.3…1.0), default 1.0 until the pref UI lands.
-    private let brightnessCeiling: CGFloat = 1.0
+    private var preferencesWindow: NSWindow?
 
     private let readItem = NSMenuItem(title: "Read:  —", action: nil, keyEquivalent: "")
     private let writeItem = NSMenuItem(title: "Write:  —", action: nil, keyEquivalent: "")
 
     init(aggregator: DiskStatsAggregator) {
         self.aggregator = aggregator
-        self.statusItem = NSStatusBar.system.statusItem(withLength: 24)
+        self.statusItem = NSStatusBar.system.statusItem(withLength: 26)
         let thickness = NSStatusBar.system.thickness
-        self.ledView = LEDView(frame: NSRect(x: 0, y: 0, width: 24, height: thickness))
+        self.ledView = LEDView(frame: NSRect(x: 0, y: 0, width: 26, height: thickness))
         super.init()
         configure()
     }
@@ -63,11 +62,24 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
 
     private func renderTick() {
-        // rolling60sP95 already carries the 10 MB/s floor, so it's always > 0.
-        let ceiling = aggregator.rolling60sP95
-        let ratio = ceiling > 0 ? aggregator.instantaneousRateBytesPerSec / ceiling : 0
-        let brightness = max(LEDView.minBrightness, min(1.0, CGFloat(ratio)))
-        ledView.brightness = brightness * brightnessCeiling
+        // Apply live LED preferences (color + glow); the cached NSColor avoids a
+        // per-frame Color→NSColor conversion.
+        let settings = AppSettings.shared
+        if ledView.tintColor != settings.ledNSColor { ledView.tintColor = settings.ledNSColor }
+        let glow = CGFloat(settings.glowIntensity)
+        if ledView.glowIntensity != glow { ledView.glowIntensity = glow }
+
+        // While Preferences is open, peg the LED at full brightness so the user can
+        // preview the chosen color + glow live — otherwise it just sits dim at idle
+        // I/O and the controls look like they do nothing.
+        if preferencesWindow?.isVisible == true {
+            ledView.brightness = 1.0
+        } else {
+            // rolling60sP95 already carries the 10 MB/s floor, so it's always > 0.
+            let ceiling = aggregator.rolling60sP95
+            let ratio = ceiling > 0 ? aggregator.instantaneousRateBytesPerSec / ceiling : 0
+            ledView.brightness = max(LEDView.minBrightness, min(1.0, CGFloat(ratio)))
+        }
     }
 
     // MARK: - Menu (PRD §1.4)
@@ -131,10 +143,37 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     // MARK: - Actions
 
+    /// Opens (or re-focuses) the preferences window. We host `PreferencesView` in
+    /// our own `NSWindow` rather than the SwiftUI `Settings` scene — for an
+    /// LSUIElement app there's no app menu to reach Settings, and the AppKit
+    /// `showSettingsWindow:` selector is deprecated on macOS 14+ ("use SettingsLink").
     @objc private func openPreferences() {
+        if preferencesWindow == nil {
+            let hosting = NSHostingController(rootView: PreferencesView())
+            let window = NSWindow(contentViewController: hosting)
+            window.title = "Blinken Preferences"
+            window.styleMask = [.titled, .closable]
+            window.isReleasedWhenClosed = false
+            preferencesWindow = window
+        }
+        guard let window = preferencesWindow else { return }
+        anchorBelowStatusItem(window)
         NSApp.activate(ignoringOtherApps: true)
-        // macOS 14+ renamed the Settings action selector.
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    /// Hangs the window from the status item: top edge just under the menu bar,
+    /// horizontally centered on the item but clamped to stay on screen. Uses the
+    /// top-left anchor so dynamic content height grows downward.
+    private func anchorBelowStatusItem(_ window: NSWindow) {
+        guard let itemWindow = statusItem.button?.window else { window.center(); return }
+        let item = itemWindow.frame
+        let visible = (itemWindow.screen ?? NSScreen.main)?.visibleFrame ?? item
+        let width = window.frame.width
+        var x = item.midX - width / 2
+        x = min(x, visible.maxX - width - 8)
+        x = max(x, visible.minX + 8)
+        window.setFrameTopLeftPoint(NSPoint(x: x, y: item.minY - 2))
     }
 
     @objc private func quit() {
