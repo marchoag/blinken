@@ -67,6 +67,12 @@ final class DiskStatsAggregator: ObservableObject {
     /// Cumulative bytes written — the latest raw IOKit counter.
     @Published private(set) var totalBytesWritten: UInt64 = 0
 
+    /// Bytes read since the app launched (the session odometer). Resets only on
+    /// app restart; the parenthetical `totalBytesRead` resets only on system restart.
+    @Published private(set) var sessionBytesRead: UInt64 = 0
+    /// Bytes written since the app launched.
+    @Published private(set) var sessionBytesWritten: UInt64 = 0
+
     /// EMA time constant (seconds) for the smoothed menu rates.
     nonisolated static let menuRateTimeConstant: Double = 1.0
 
@@ -83,6 +89,11 @@ final class DiskStatsAggregator: ObservableObject {
     private var prevBytesRead: UInt64 = 0
     private var prevBytesWritten: UInt64 = 0
 
+    // Captured on first ingest; sessionBytesRead/Written are deltas from these.
+    private var sessionBaselineRead: UInt64 = 0
+    private var sessionBaselineWritten: UInt64 = 0
+    private var hasSessionBaseline = false
+
     // MARK: - Ingest
 
     /// Feed one cumulative sample. `totalBytesRead` / `totalBytesWritten` are the
@@ -93,6 +104,16 @@ final class DiskStatsAggregator: ObservableObject {
         // odometer figures) — even on the first sample, and even while idle.
         self.totalBytesRead = totalBytesRead
         self.totalBytesWritten = totalBytesWritten
+
+        // Session odometer baselines are captured on the first sample; subsequent
+        // session totals are wrap-safe deltas from those baselines.
+        if !hasSessionBaseline {
+            sessionBaselineRead = totalBytesRead
+            sessionBaselineWritten = totalBytesWritten
+            hasSessionBaseline = true
+        }
+        sessionBytesRead = Self.cumulativeDelta(baseline: sessionBaselineRead, current: totalBytesRead)
+        sessionBytesWritten = Self.cumulativeDelta(baseline: sessionBaselineWritten, current: totalBytesWritten)
 
         defer {
             prevTimestamp = timestamp
@@ -146,6 +167,12 @@ final class DiskStatsAggregator: ObservableObject {
         let raw = current >= previous ? current - previous : current &- previous
         let impliedRate = Double(raw) / interval
         return impliedRate <= maxPlausibleBytesPerSec ? raw : 0
+    }
+
+    /// Wrap-safe difference for session totals — no plausibility guard, since a
+    /// long-running session can legitimately produce huge cumulative deltas.
+    private static func cumulativeDelta(baseline: UInt64, current: UInt64) -> UInt64 {
+        current >= baseline ? current - baseline : current &- baseline
     }
 
     // MARK: - Ring buffer helpers

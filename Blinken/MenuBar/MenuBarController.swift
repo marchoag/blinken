@@ -124,15 +124,11 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
 
     private func refreshRates() {
-        // Smoothed rate (steady, non-flickering) + cumulative total (odometer).
-        readItem.title = "Read:   \(Self.formatRate(aggregator.smoothedReadRateBytesPerSec))   (\(Self.formatBytes(aggregator.totalBytesRead)))"
-        writeItem.title = "Write:   \(Self.formatRate(aggregator.smoothedWriteRateBytesPerSec))   (\(Self.formatBytes(aggregator.totalBytesWritten)))"
-    }
-
-    private static func formatRate(_ bytesPerSec: Double) -> String {
-        let mb = bytesPerSec / (1024 * 1024)
-        if mb >= 1 { return String(format: "%.1f MB/s", mb) }
-        return String(format: "%.0f KB/s", bytesPerSec / 1024)
+        // Amounts only — the menu is the odometer; the LED conveys live rate.
+        //   primary = bytes since app launch (this session)
+        //   parens  = bytes since last reboot (raw IOKit counter)
+        readItem.title  = "Read:   \(Self.formatBytes(aggregator.sessionBytesRead))   (\(Self.formatBytes(aggregator.totalBytesRead)))"
+        writeItem.title = "Write:   \(Self.formatBytes(aggregator.sessionBytesWritten))   (\(Self.formatBytes(aggregator.totalBytesWritten)))"
     }
 
     /// Human-readable cumulative total (e.g. "661.3 GB"), matching the OS's figures.
