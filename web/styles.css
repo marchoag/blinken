@@ -163,8 +163,7 @@ a:hover { text-decoration-color: var(--led-red); }
     color: var(--subdued);
     margin-bottom: 24px;
 }
-.kicker::before { content: "—  "; color: var(--rule-strong); }
-.kicker::after  { content: "  —"; color: var(--rule-strong); }
+/* (kicker stands alone; no decorative dashes) */
 
 .led-stage {
     width: 280px;
