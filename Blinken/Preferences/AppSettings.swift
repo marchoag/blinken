@@ -87,6 +87,14 @@ final class AppSettings: ObservableObject {
         NSColor(color).usingColorSpace(.sRGB) ?? .systemRed
     }
 
+    /// Restore the visual prefs to factory defaults (LED color, swap color, glow).
+    /// Leaves launch-at-login alone — that's a user/system choice, not appearance.
+    func resetAppearanceToDefaults() {
+        ledColor = Self.defaultLEDColor
+        swapColor = Self.defaultSwapColor
+        glowIntensity = 1.0
+    }
+
     /// Register/unregister the login item. Failures (e.g. on an unsigned dev build)
     /// are logged, not fatal — the real distribution build registers cleanly.
     private func applyLaunchAtLogin() {

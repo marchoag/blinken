@@ -9,9 +9,13 @@
 import AppKit
 
 /// A circular "LED" that glows in proportion to `brightness` (0.04…1.0), in the
-/// user's chosen `tintColor`. A near-black bezel rings a radial-gradient face
-/// (bright core → dark edge); above ~55% brightness the core goes "white-hot" and
-/// a soft outer bloom ramps up hard, so heavy I/O reads as a really bright glow.
+/// user's chosen `tintColor`. A radial-gradient face (bright core → dark edge)
+/// sits inside a soft outer bloom that intensifies via a "hot" curve above ~55%
+/// brightness, so heavy I/O reads as a vivid glow. Saturated colors throughout
+/// (a small specular glint provides the "lit lamp" cue without desaturating).
+///
+/// Diameter is an instance property so the same view can render at menu-bar
+/// scale (14pt) and as a large "logo" in the prefs About section.
 final class LEDView: NSView {
 
     /// Lit fraction, clamped to [`Self.minBrightness`, 1.0]. Setting it redraws.
@@ -32,11 +36,14 @@ final class LEDView: NSView {
         didSet { if glowIntensity != oldValue { needsDisplay = true } }
     }
 
+    /// LED diameter in logical points. Default matches the PRD §1.1 menu-bar spec
+    /// (14pt); the prefs About logo bumps it up.
+    var diameter: CGFloat = 14 {
+        didSet { if diameter != oldValue { needsDisplay = true } }
+    }
+
     /// Faintly-visible floor — confirms the app is running even at zero I/O (PRD §1.2).
     static let minBrightness: CGFloat = 0.04
-
-    /// LED diameter in logical points (PRD §1.1: ~14×14).
-    private static let diameter: CGFloat = 14
 
     // Status-bar overlay: let clicks fall through to the hosting status button.
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
@@ -48,17 +55,17 @@ final class LEDView: NSView {
         let center = NSPoint(x: bounds.midX, y: bounds.midY)
         let gi = max(0, min(1, glowIntensity))
 
-        // "Hotness" ramps in above ~55% brightness, peaking at 1.0 — it drives both
-        // the bright bloom and the white-hot core so 80%+ I/O really pops.
+        // "Hotness" ramps in above ~55% brightness, peaking at 1.0 — drives the
+        // bright bloom (alpha) at the top end. Color stays saturated; the specular
+        // highlight (small white spot) is what gives the "lit" feel without
+        // washing out the body's color.
         let hot = pow(max(0, (b - 0.55) / 0.45), 1.6)
 
-        // 1. Soft outer glow. Alpha ramps steeply via `hot` so the top end blooms.
+        // 1. Soft outer glow — saturated tint, alpha ramps via `hot` for top bloom.
         let glowAlpha = min(1.0, (0.30 * b + 0.70 * hot) * gi)
         if glowAlpha > 0.002 {
             let d = (min(bounds.width, bounds.height) - 1) * (0.9 + 0.1 * hot)
             let glowRect = NSRect(x: center.x - d / 2, y: center.y - d / 2, width: d, height: d)
-            // Saturated tint — no white mixing — so the halo reads as vivid red
-            // (or whatever tint) instead of pastel pink at high brightness.
             let glowColor = NSColor(srgbRed: r, green: g, blue: bl, alpha: glowAlpha)
             if let glow = NSGradient(colors: [glowColor, glowColor.withAlphaComponent(0)],
                                      atLocations: [0.0, 1.0], colorSpace: .sRGB) {
@@ -66,18 +73,15 @@ final class LEDView: NSView {
             }
         }
 
-        // 2. LED face: radial gradient (bright core → dark edge). The core scales
-        //    with `b`, then lightens toward white as it gets hot (a filament
-        //    glowing up). No separate bezel — the gradient's own dark edge is the
-        //    rim, so the outer glow flows continuously into the lamp without a
-        //    black "ring" interrupting it.
+        // 2. LED face: radial gradient (bright core → dark edge). No separate
+        //    bezel — the gradient's own dark edge is the rim, so the outer glow
+        //    flows continuously into the lamp.
         let face = NSRect(
-            x: (center.x - Self.diameter / 2).rounded(),
-            y: (center.y - Self.diameter / 2).rounded(),
-            width: Self.diameter,
-            height: Self.diameter)
-        // Saturated tint scaled by brightness — the lamp stays vivid; the specular
-        // highlight below provides the "lit" cue without desaturating the body.
+            x: (center.x - diameter / 2).rounded(),
+            y: (center.y - diameter / 2).rounded(),
+            width: diameter,
+            height: diameter)
+        // Saturated tint scaled by brightness — the lamp stays vivid.
         let core = NSColor(srgbRed: r * b, green: g * b, blue: bl * b, alpha: 1.0)
         let edge = NSColor(srgbRed: r * 0.4 * b, green: g * 0.4 * b, blue: bl * 0.4 * b, alpha: 1.0)
         if let gradient = NSGradient(starting: core, ending: edge) {
