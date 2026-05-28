@@ -23,9 +23,6 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     private var renderTimer: Timer?
     private var menuRefreshTimer: Timer?
 
-    /// PRD §1.5 preference (slider 0.3…1.0), default 1.0 until the pref UI lands.
-    private let brightnessCeiling: CGFloat = 1.0
-
     private let readItem = NSMenuItem(title: "Read:  —", action: nil, keyEquivalent: "")
     private let writeItem = NSMenuItem(title: "Write:  —", action: nil, keyEquivalent: "")
 
@@ -63,11 +60,17 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
 
     private func renderTick() {
+        // Apply live LED preferences (color + glow); the cached NSColor avoids a
+        // per-frame Color→NSColor conversion.
+        let settings = AppSettings.shared
+        if ledView.tintColor != settings.ledNSColor { ledView.tintColor = settings.ledNSColor }
+        let glow = CGFloat(settings.glowIntensity)
+        if ledView.glowIntensity != glow { ledView.glowIntensity = glow }
+
         // rolling60sP95 already carries the 10 MB/s floor, so it's always > 0.
         let ceiling = aggregator.rolling60sP95
         let ratio = ceiling > 0 ? aggregator.instantaneousRateBytesPerSec / ceiling : 0
-        let brightness = max(LEDView.minBrightness, min(1.0, CGFloat(ratio)))
-        ledView.brightness = brightness * brightnessCeiling
+        ledView.brightness = max(LEDView.minBrightness, min(1.0, CGFloat(ratio)))
     }
 
     // MARK: - Menu (PRD §1.4)
