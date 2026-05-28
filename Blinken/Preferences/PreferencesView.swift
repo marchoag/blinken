@@ -41,7 +41,8 @@ struct PreferencesView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 400, height: 430)
+        // Fixed width; height is driven by content (the host uses preferredContentSize).
+        .frame(width: 400)
     }
 
     private var versionString: String {

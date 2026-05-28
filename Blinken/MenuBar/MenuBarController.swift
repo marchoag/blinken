@@ -142,15 +142,33 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     /// `showSettingsWindow:` selector is deprecated on macOS 14+ ("use SettingsLink").
     @objc private func openPreferences() {
         if preferencesWindow == nil {
-            let window = NSWindow(contentViewController: NSHostingController(rootView: PreferencesView()))
+            let hosting = NSHostingController(rootView: PreferencesView())
+            // Size the window to the SwiftUI content's ideal height (no scrolling).
+            hosting.sizingOptions = [.preferredContentSize]
+            let window = NSWindow(contentViewController: hosting)
             window.title = "Blinken Preferences"
             window.styleMask = [.titled, .closable]
             window.isReleasedWhenClosed = false
-            window.center()
             preferencesWindow = window
         }
+        guard let window = preferencesWindow else { return }
+        anchorBelowStatusItem(window)
         NSApp.activate(ignoringOtherApps: true)
-        preferencesWindow?.makeKeyAndOrderFront(nil)
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    /// Hangs the window from the status item: top edge just under the menu bar,
+    /// horizontally centered on the item but clamped to stay on screen. Uses the
+    /// top-left anchor so dynamic content height grows downward.
+    private func anchorBelowStatusItem(_ window: NSWindow) {
+        guard let itemWindow = statusItem.button?.window else { window.center(); return }
+        let item = itemWindow.frame
+        let visible = (itemWindow.screen ?? NSScreen.main)?.visibleFrame ?? item
+        let width = window.frame.width
+        var x = item.midX - width / 2
+        x = min(x, visible.maxX - width - 8)
+        x = max(x, visible.minX + 8)
+        window.setFrameTopLeftPoint(NSPoint(x: x, y: item.minY - 2))
     }
 
     @objc private func quit() {
