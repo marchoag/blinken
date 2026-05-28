@@ -27,6 +27,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     private let readItem = NSMenuItem(title: "Read:  —", action: nil, keyEquivalent: "")
     private let writeItem = NSMenuItem(title: "Write:  —", action: nil, keyEquivalent: "")
+    private let ramItem = NSMenuItem(title: "RAM used:  —", action: nil, keyEquivalent: "")
     private let swapItem = NSMenuItem(title: "Swap used:  —", action: nil, keyEquivalent: "")
     private let pressureItem = NSMenuItem(title: "Pressure:  —", action: nil, keyEquivalent: "")
 
@@ -111,6 +112,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
         let memoryHeader = NSMenuItem(title: "Memory", action: nil, keyEquivalent: "")
         menu.addItem(memoryHeader)
+        menu.addItem(ramItem)
         menu.addItem(swapItem)
         menu.addItem(pressureItem)
         menu.addItem(.separator())
@@ -151,12 +153,15 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         readItem.title  = "Read:   \(Self.formatBytes(aggregator.sessionBytesRead))   (\(Self.formatBytes(aggregator.totalBytesRead)))"
         writeItem.title = "Write:   \(Self.formatBytes(aggregator.sessionBytesWritten))   (\(Self.formatBytes(aggregator.totalBytesWritten)))"
 
-        // Memory: swap used + % of system RAM (stable reference) + pressure level.
-        let used = swap.swapUsedBytes
+        // Memory: RAM used (% of total) + Swap used (absolute) + pressure level.
+        // The earlier "% of RAM" parenthetical on the swap line read ambiguously
+        // — like *RAM* was that fraction used — so each metric now stands alone.
         let ram = swap.systemRAMBytes
-        let pct = ram > 0 ? Int((Double(used) / Double(ram) * 100).rounded()) : 0
-        swapItem.title = "Swap used:   \(Self.formatBytesMemory(used))   (\(pct)% of \(Self.formatBytesMemory(ram)) RAM)"
-        pressureItem.title = "Pressure:   \(swap.pressure.label)"
+        let ramUsed = swap.ramUsedBytes
+        let ramPct = ram > 0 ? Int((Double(ramUsed) / Double(ram) * 100).rounded()) : 0
+        ramItem.title = "RAM used:    \(Self.formatBytesMemory(ramUsed)) / \(Self.formatBytesMemory(ram))   (\(ramPct)%)"
+        swapItem.title = "Swap used:   \(Self.formatBytesMemory(swap.swapUsedBytes))"
+        pressureItem.title = "Pressure:    \(swap.pressure.label)"
     }
 
     /// Human-readable disk total (e.g. "661.3 GB"); decimal GB to match Activity
