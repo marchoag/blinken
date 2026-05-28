@@ -51,12 +51,10 @@ struct PreferencesView: View {
                         Text("Made with ❤️ in Marin County, CA by [Marc Hoag](https://marchoag.com)")
                             .font(.callout)
                             .padding(.top, 2)
-                        HStack(spacing: 6) {
-                            Link("© 2026 Axiomic, LLC", destination: URL(string: "https://axiomic.ai")!)
-                            Text("·").foregroundStyle(.secondary)
-                            Link("Send Feedback", destination: Self.feedbackURL)
-                        }
-                        .font(.callout)
+                        Link("Send Feedback", destination: Self.feedbackURL)
+                            .font(.callout)
+                        Link("© 2026 Axiomic, LLC", destination: URL(string: "https://axiomic.ai")!)
+                            .font(.callout)
                     }
                     Spacer(minLength: 0)
                 }
