@@ -63,7 +63,7 @@ struct PreferencesView: View {
         }
         .formStyle(.grouped)
         .scrollIndicators(.hidden)
-        .frame(width: 420, height: 600)
+        .frame(width: 560, height: 600)
     }
 
     private static let feedbackURL = URL(string: "mailto:marc@marchoag.com?subject=Blinken:%20")!
