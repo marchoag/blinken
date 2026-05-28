@@ -155,14 +155,22 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         let used = swap.swapUsedBytes
         let ram = swap.systemRAMBytes
         let pct = ram > 0 ? Int((Double(used) / Double(ram) * 100).rounded()) : 0
-        swapItem.title = "Swap used:   \(Self.formatBytes(used))   (\(pct)% of \(Self.formatBytes(ram)) RAM)"
+        swapItem.title = "Swap used:   \(Self.formatBytesMemory(used))   (\(pct)% of \(Self.formatBytesMemory(ram)) RAM)"
         pressureItem.title = "Pressure:   \(swap.pressure.label)"
     }
 
-    /// Human-readable cumulative total (e.g. "661.3 GB"), matching the OS's figures.
+    /// Human-readable disk total (e.g. "661.3 GB"); decimal GB to match Activity
+    /// Monitor / drive manufacturers' conventions.
     private static func formatBytes(_ bytes: UInt64) -> String {
         let capped = bytes > UInt64(Int64.max) ? Int64.max : Int64(bytes)
         return ByteCountFormatter.string(fromByteCount: capped, countStyle: .file)
+    }
+
+    /// Memory-style formatting (1 GB = 2³⁰ B) — matches Apple's marketing numbers
+    /// for RAM and swap, i.e. what users expect when reading "24 GB."
+    private static func formatBytesMemory(_ bytes: UInt64) -> String {
+        let capped = bytes > UInt64(Int64.max) ? Int64.max : Int64(bytes)
+        return ByteCountFormatter.string(fromByteCount: capped, countStyle: .memory)
     }
 
     // MARK: - Actions

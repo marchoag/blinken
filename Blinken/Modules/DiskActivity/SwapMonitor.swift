@@ -43,10 +43,11 @@ final class SwapMonitor: ObservableObject {
     /// Latest kernel memory-pressure reading.
     @Published private(set) var pressure: Pressure = .normal
 
-    /// Total physical RAM, captured once at init. Used as the swap bar's stable
-    /// denominator — the kernel-allocated swap pool grows on demand on macOS, so
-    /// `used / pool` slides with usage; `used / RAM` is the real pressure signal.
-    let systemRAMBytes: UInt64 = ProcessInfo.processInfo.physicalMemory
+    /// Total physical RAM (`hw.memsize`), captured once at init. The swap bar's
+    /// stable denominator — the kernel-allocated swap pool grows on demand on
+    /// macOS, so `used / pool` slides with usage; `used / RAM` is the real
+    /// pressure signal.
+    let systemRAMBytes: UInt64 = SwapMonitor.readPhysicalRAM()
 
     private var timer: Timer?
 
@@ -83,5 +84,18 @@ final class SwapMonitor: ObservableObject {
         if sysctlbyname("kern.memorystatus_vm_pressure_level", &level, &levelSize, nil, 0) == 0 {
             pressure = Pressure(rawValue: level) ?? .normal
         }
+    }
+
+    /// Reads `hw.memsize` — the canonical "installed RAM" value on macOS.
+    /// We avoid `ProcessInfo.processInfo.physicalMemory`, which under-reports on
+    /// Apple Silicon (returns the "usable" page-pool size, e.g. ~16 GiB on a
+    /// 24 GB Mac).
+    nonisolated private static func readPhysicalRAM() -> UInt64 {
+        var bytes: UInt64 = 0
+        var size = MemoryLayout<UInt64>.size
+        if sysctlbyname("hw.memsize", &bytes, &size, nil, 0) == 0, bytes > 0 {
+            return bytes
+        }
+        return ProcessInfo.processInfo.physicalMemory
     }
 }
