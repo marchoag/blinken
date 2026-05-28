@@ -16,9 +16,11 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private let diskActivity = DiskActivityModule()
+    private var menuBar: MenuBarController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         diskActivity.start()
+        menuBar = MenuBarController(aggregator: diskActivity.aggregator)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
