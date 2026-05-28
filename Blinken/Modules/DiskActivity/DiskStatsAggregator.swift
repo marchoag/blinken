@@ -56,6 +56,20 @@ final class DiskStatsAggregator: ObservableObject {
     /// Latest write-only throughput (for the dropdown menu split).
     @Published private(set) var writeRateBytesPerSec: Double = 0
 
+    /// ~1s-smoothed read throughput for the menu — steady, non-flickering.
+    @Published private(set) var smoothedReadRateBytesPerSec: Double = 0
+    /// ~1s-smoothed write throughput for the menu.
+    @Published private(set) var smoothedWriteRateBytesPerSec: Double = 0
+
+    /// Cumulative bytes read — the latest raw IOKit counter (the same figure the OS
+    /// and Activity Monitor report). Monotonic; only resets on restart. Menu odometer.
+    @Published private(set) var totalBytesRead: UInt64 = 0
+    /// Cumulative bytes written — the latest raw IOKit counter.
+    @Published private(set) var totalBytesWritten: UInt64 = 0
+
+    /// EMA time constant (seconds) for the smoothed menu rates.
+    nonisolated static let menuRateTimeConstant: Double = 1.0
+
     // MARK: - Ring buffer (per-sample total throughput, bytes/sec)
 
     private var ring = [Double](repeating: 0, count: DiskStatsAggregator.windowCapacity)
@@ -75,6 +89,11 @@ final class DiskStatsAggregator: ObservableObject {
     /// device byte counters at `timestamp` (seconds) — monotonically increasing,
     /// subject to UInt64 wraparound. The first sample only sets a baseline.
     func ingest(timestamp: Double, totalBytesRead: UInt64, totalBytesWritten: UInt64) {
+        // Cumulative totals always reflect the latest raw counters (the menu's
+        // odometer figures) — even on the first sample, and even while idle.
+        self.totalBytesRead = totalBytesRead
+        self.totalBytesWritten = totalBytesWritten
+
         defer {
             prevTimestamp = timestamp
             prevBytesRead = totalBytesRead
@@ -99,6 +118,15 @@ final class DiskStatsAggregator: ObservableObject {
         readRateBytesPerSec = readRate
         writeRateBytesPerSec = writeRate
         instantaneousRateBytesPerSec = totalRate
+
+        // ~1s EMA for the menu's read/write figures. The raw per-tick rate is far
+        // too clumpy to read as a number — it hits 0 between bursts even during an
+        // active copy — so we smooth it into a steady "current throughput" that only
+        // falls to 0 after sustained idle. (The LED keeps the twitchy instantaneous
+        // rate; that flicker is the intended aesthetic.)
+        let alpha = 1 - exp(-interval / Self.menuRateTimeConstant)
+        smoothedReadRateBytesPerSec += alpha * (readRate - smoothedReadRateBytesPerSec)
+        smoothedWriteRateBytesPerSec += alpha * (writeRate - smoothedWriteRateBytesPerSec)
 
         appendToRing(totalRate)
         rolling60sP95 = max(percentile95(), Self.p95FloorBytesPerSec)

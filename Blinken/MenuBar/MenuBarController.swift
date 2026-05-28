@@ -112,14 +112,21 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
 
     private func refreshRates() {
-        readItem.title = "Read:  \(Self.formatRate(aggregator.readRateBytesPerSec))"
-        writeItem.title = "Write:  \(Self.formatRate(aggregator.writeRateBytesPerSec))"
+        // Smoothed rate (steady, non-flickering) + cumulative total (odometer).
+        readItem.title = "Read:   \(Self.formatRate(aggregator.smoothedReadRateBytesPerSec))   (\(Self.formatBytes(aggregator.totalBytesRead)))"
+        writeItem.title = "Write:   \(Self.formatRate(aggregator.smoothedWriteRateBytesPerSec))   (\(Self.formatBytes(aggregator.totalBytesWritten)))"
     }
 
     private static func formatRate(_ bytesPerSec: Double) -> String {
         let mb = bytesPerSec / (1024 * 1024)
         if mb >= 1 { return String(format: "%.1f MB/s", mb) }
         return String(format: "%.0f KB/s", bytesPerSec / 1024)
+    }
+
+    /// Human-readable cumulative total (e.g. "661.3 GB"), matching the OS's figures.
+    private static func formatBytes(_ bytes: UInt64) -> String {
+        let capped = bytes > UInt64(Int64.max) ? Int64.max : Int64(bytes)
+        return ByteCountFormatter.string(fromByteCount: capped, countStyle: .file)
     }
 
     // MARK: - Actions

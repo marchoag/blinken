@@ -33,10 +33,24 @@ final class LEDView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let b = max(Self.minBrightness, min(1.0, brightness))
+        let center = NSPoint(x: bounds.midX, y: bounds.midY)
 
+        // 1. Soft outer glow — a radial bloom that grows with activity. Nearly
+        //    invisible at idle, it blooms during bursts so a "blink" reads as a
+        //    soft glow rather than a hard on/off.
+        let glowDiameter = min(bounds.width, bounds.height) - 1
+        let glowRect = NSRect(x: center.x - glowDiameter / 2, y: center.y - glowDiameter / 2,
+                              width: glowDiameter, height: glowDiameter)
+        let glowColor = NSColor(srgbRed: 1.0, green: 0.20, blue: 0.12, alpha: 0.6 * b)
+        if let glow = NSGradient(colors: [glowColor, glowColor.withAlphaComponent(0)],
+                                 atLocations: [0.0, 1.0], colorSpace: .sRGB) {
+            glow.draw(in: NSBezierPath(ovalIn: glowRect), relativeCenterPosition: .zero)
+        }
+
+        // 2. LED body.
         let rect = NSRect(
-            x: ((bounds.width - Self.diameter) / 2).rounded(),
-            y: ((bounds.height - Self.diameter) / 2).rounded(),
+            x: (center.x - Self.diameter / 2).rounded(),
+            y: (center.y - Self.diameter / 2).rounded(),
             width: Self.diameter,
             height: Self.diameter)
 
@@ -47,14 +61,21 @@ final class LEDView: NSView {
 
         // Face: radial gradient, bright core → dark edge, intensity scaled by `b`.
         let face = rect.insetBy(dx: 1.5, dy: 1.5)
-        let core = NSColor(srgbRed: b, green: 0.12 * b, blue: 0.10 * b, alpha: 1.0)
-        let edge = NSColor(srgbRed: 0.40 * b, green: 0.0, blue: 0.0, alpha: 1.0)
+        let core = NSColor(srgbRed: b, green: 0.18 * b, blue: 0.12 * b, alpha: 1.0)
+        let edge = NSColor(srgbRed: 0.38 * b, green: 0.0, blue: 0.0, alpha: 1.0)
         if let gradient = NSGradient(starting: core, ending: edge) {
             // Highlight sits slightly above center for a glassy, domed look.
-            gradient.draw(in: NSBezierPath(ovalIn: face), relativeCenterPosition: NSPoint(x: 0, y: 0.25))
+            gradient.draw(in: NSBezierPath(ovalIn: face), relativeCenterPosition: NSPoint(x: 0, y: 0.22))
         } else {
             core.setFill()
             NSBezierPath(ovalIn: face).fill()
         }
+
+        // 3. Specular highlight — a soft warm spot near the top for a domed, glassy
+        //    lamp look; fades in with brightness.
+        let hi = face.insetBy(dx: face.width * 0.28, dy: face.height * 0.28)
+                     .offsetBy(dx: 0, dy: face.height * 0.18)
+        NSColor(srgbRed: 1.0, green: 0.85, blue: 0.80, alpha: 0.35 * b).setFill()
+        NSBezierPath(ovalIn: hi).fill()
     }
 }

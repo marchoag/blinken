@@ -189,4 +189,38 @@ final class DiskStatsAggregatorTests: XCTestCase {
         XCTAssertLessThan(aggregator.instantaneousRateBytesPerSec, DiskStatsAggregator.maxPlausibleBytesPerSec,
                           "A counter reset must not be reported as an absurd spike.")
     }
+
+    // MARK: - 5. Menu figures: cumulative totals + smoothed rate
+
+    /// The menu shows cumulative totals (odometer) + a smoothed rate. Totals must
+    /// track the latest raw counter and never drop while idle; the smoothed rate
+    /// converges under sustained load and decays toward 0 after sustained idle.
+    func testCumulativeTotalsAndSmoothedRate() {
+        let perTick: UInt64 = 1_000_000              // ~120 MB/s at 120Hz
+        let expectedRate = Double(perTick) / interval
+
+        let aggregator = DiskStatsAggregator()
+        var read: UInt64 = 0
+        aggregator.ingest(timestamp: 0, totalBytesRead: 0, totalBytesWritten: 0)
+
+        // Sustained read for ~5s (>> 1s EMA time constant) → smoothed converges.
+        for i in 1...600 {
+            read &+= perTick
+            aggregator.ingest(timestamp: Double(i) * interval, totalBytesRead: read, totalBytesWritten: 0)
+        }
+        XCTAssertEqual(aggregator.totalBytesRead, read,
+                       "Cumulative total should equal the latest raw counter reading.")
+        XCTAssertEqual(aggregator.smoothedReadRateBytesPerSec, expectedRate, accuracy: expectedRate * 0.05,
+                       "Smoothed read rate should converge to the sustained throughput.")
+
+        // Now go idle for ~5s (counter unchanged) → smoothed decays, total holds.
+        let totalAfterActive = read
+        for i in 601...1200 {
+            aggregator.ingest(timestamp: Double(i) * interval, totalBytesRead: read, totalBytesWritten: 0)
+        }
+        XCTAssertEqual(aggregator.totalBytesRead, totalAfterActive,
+                       "Cumulative total must not reset/drop while idle (only on restart).")
+        XCTAssertLessThan(aggregator.smoothedReadRateBytesPerSec, expectedRate * 0.05,
+                          "Smoothed rate should decay toward 0 after sustained idle.")
+    }
 }
