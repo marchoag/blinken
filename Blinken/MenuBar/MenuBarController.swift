@@ -9,17 +9,17 @@
 import AppKit
 import SwiftUI
 
-/// Owns the menu bar status item: hosts the `LEDView`, drives its brightness from
-/// the `DiskStatsAggregator` on a ~60Hz render loop, and presents the dropdown.
-///
-/// Phase 3 wires the LED + a minimal disk-activity menu; the swap bar and the
-/// memory section land with the SwapMonitor phase.
+/// Owns the menu bar status item: hosts the `LEDView` and `SwapBarView`, drives
+/// them from `DiskStatsAggregator` and `SwapMonitor` on a ~60Hz render loop, and
+/// presents the dropdown (Disk Activity + Memory + Preferences + Quit).
 @MainActor
 final class MenuBarController: NSObject, NSMenuDelegate {
 
     private let aggregator: DiskStatsAggregator
+    private let swap: SwapMonitor
     private let statusItem: NSStatusItem
     private let ledView: LEDView
+    private let swapBarView: SwapBarView
 
     private var renderTimer: Timer?
     private var menuRefreshTimer: Timer?
@@ -27,23 +27,29 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     private let readItem = NSMenuItem(title: "Read:  —", action: nil, keyEquivalent: "")
     private let writeItem = NSMenuItem(title: "Write:  —", action: nil, keyEquivalent: "")
+    private let swapItem = NSMenuItem(title: "Swap used:  —", action: nil, keyEquivalent: "")
+    private let pressureItem = NSMenuItem(title: "Pressure:  —", action: nil, keyEquivalent: "")
 
-    init(aggregator: DiskStatsAggregator) {
+    init(aggregator: DiskStatsAggregator, swap: SwapMonitor) {
         self.aggregator = aggregator
-        self.statusItem = NSStatusBar.system.statusItem(withLength: 26)
+        self.swap = swap
+        // Composite item: LED slot (≈22pt) + small gap + swap-bar slot (≈12pt).
+        self.statusItem = NSStatusBar.system.statusItem(withLength: 36)
         let thickness = NSStatusBar.system.thickness
-        self.ledView = LEDView(frame: NSRect(x: 0, y: 0, width: 26, height: thickness))
+        self.ledView = LEDView(frame: NSRect(x: 0, y: 0, width: 22, height: thickness))
+        self.swapBarView = SwapBarView(frame: NSRect(x: 24, y: 0, width: 12, height: thickness))
         super.init()
         configure()
     }
 
     private func configure() {
         if let button = statusItem.button {
-            ledView.frame = button.bounds
-            ledView.autoresizingMask = [.width, .height]
+            // Explicit frames partition the button into LED + swap slots; status item
+            // length is fixed, so no autoresizing needed.
             button.image = nil
             button.title = ""
             button.addSubview(ledView)
+            button.addSubview(swapBarView)
         }
         statusItem.menu = makeMenu()
         startRenderLoop()
@@ -51,7 +57,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     // MARK: - Render loop (PRD §1.2)
 
-    /// Pulls the latest aggregated value at ~60Hz and maps it to LED brightness.
+    /// Pulls the latest aggregated values at ~60Hz and updates both views.
     /// `.common` run-loop mode keeps it ticking during menu tracking / window drags.
     private func startRenderLoop() {
         let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
@@ -80,6 +86,12 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             let ratio = ceiling > 0 ? aggregator.instantaneousRateBytesPerSec / ceiling : 0
             ledView.brightness = max(LEDView.minBrightness, min(1.0, CGFloat(ratio)))
         }
+
+        // Swap bar: fill fraction + live tint from settings.
+        let total = swap.swapTotalBytes
+        let fraction: CGFloat = total > 0 ? CGFloat(swap.swapUsedBytes) / CGFloat(total) : 0
+        if swapBarView.usedFraction != fraction { swapBarView.usedFraction = fraction }
+        if swapBarView.tintColor != settings.swapNSColor { swapBarView.tintColor = settings.swapNSColor }
     }
 
     // MARK: - Menu (PRD §1.4)
@@ -88,10 +100,16 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         let menu = NSMenu()
         menu.delegate = self
 
-        let header = NSMenuItem(title: "Disk Activity", action: nil, keyEquivalent: "")
-        menu.addItem(header)
+        let diskHeader = NSMenuItem(title: "Disk Activity", action: nil, keyEquivalent: "")
+        menu.addItem(diskHeader)
         menu.addItem(readItem)
         menu.addItem(writeItem)
+        menu.addItem(.separator())
+
+        let memoryHeader = NSMenuItem(title: "Memory", action: nil, keyEquivalent: "")
+        menu.addItem(memoryHeader)
+        menu.addItem(swapItem)
+        menu.addItem(pressureItem)
         menu.addItem(.separator())
 
         let prefs = NSMenuItem(title: "Preferences…", action: #selector(openPreferences), keyEquivalent: ",")
@@ -107,8 +125,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         return menu
     }
 
-    /// Refresh the read/write rows when the menu opens, then keep them live at 1Hz
-    /// while it stays open (PRD §1.4).
+    /// Refresh menu rows when it opens, then keep them live at 1Hz while open
+    /// (PRD §1.4).
     func menuWillOpen(_ menu: NSMenu) {
         refreshRates()
         let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
@@ -124,11 +142,15 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
 
     private func refreshRates() {
-        // Amounts only — the menu is the odometer; the LED conveys live rate.
+        // Disk amounts only — the menu is the odometer; the LED conveys live rate.
         //   primary = bytes since app launch (this session)
         //   parens  = bytes since last reboot (raw IOKit counter)
         readItem.title  = "Read:   \(Self.formatBytes(aggregator.sessionBytesRead))   (\(Self.formatBytes(aggregator.totalBytesRead)))"
         writeItem.title = "Write:   \(Self.formatBytes(aggregator.sessionBytesWritten))   (\(Self.formatBytes(aggregator.totalBytesWritten)))"
+
+        // Memory: swap used / currently-allocated swap + kernel pressure level.
+        swapItem.title = "Swap used:   \(Self.formatBytes(swap.swapUsedBytes)) / \(Self.formatBytes(swap.swapTotalBytes))"
+        pressureItem.title = "Pressure:   \(swap.pressure.label)"
     }
 
     /// Human-readable cumulative total (e.g. "661.3 GB"), matching the OS's figures.

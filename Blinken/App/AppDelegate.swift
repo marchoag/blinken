@@ -20,7 +20,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         diskActivity.start()
-        menuBar = MenuBarController(aggregator: diskActivity.aggregator)
+        menuBar = MenuBarController(aggregator: diskActivity.aggregator,
+                                    swap: diskActivity.swap)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
