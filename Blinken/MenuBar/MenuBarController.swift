@@ -69,10 +69,17 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         let glow = CGFloat(settings.glowIntensity)
         if ledView.glowIntensity != glow { ledView.glowIntensity = glow }
 
-        // rolling60sP95 already carries the 10 MB/s floor, so it's always > 0.
-        let ceiling = aggregator.rolling60sP95
-        let ratio = ceiling > 0 ? aggregator.instantaneousRateBytesPerSec / ceiling : 0
-        ledView.brightness = max(LEDView.minBrightness, min(1.0, CGFloat(ratio)))
+        // While Preferences is open, peg the LED at full brightness so the user can
+        // preview the chosen color + glow live — otherwise it just sits dim at idle
+        // I/O and the controls look like they do nothing.
+        if preferencesWindow?.isVisible == true {
+            ledView.brightness = 1.0
+        } else {
+            // rolling60sP95 already carries the 10 MB/s floor, so it's always > 0.
+            let ceiling = aggregator.rolling60sP95
+            let ratio = ceiling > 0 ? aggregator.instantaneousRateBytesPerSec / ceiling : 0
+            ledView.brightness = max(LEDView.minBrightness, min(1.0, CGFloat(ratio)))
+        }
     }
 
     // MARK: - Menu (PRD §1.4)
