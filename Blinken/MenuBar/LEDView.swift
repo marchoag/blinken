@@ -67,21 +67,16 @@ final class LEDView: NSView {
             }
         }
 
-        // 2. LED body.
-        let rect = NSRect(
+        // 2. LED face: radial gradient (bright core → dark edge). The core scales
+        //    with `b`, then lightens toward white as it gets hot (a filament
+        //    glowing up). No separate bezel — the gradient's own dark edge is the
+        //    rim, so the outer glow flows continuously into the lamp without a
+        //    black "ring" interrupting it.
+        let face = NSRect(
             x: (center.x - Self.diameter / 2).rounded(),
             y: (center.y - Self.diameter / 2).rounded(),
             width: Self.diameter,
             height: Self.diameter)
-
-        // Bezel: a dim, near-black tint ring so the lamp reads as "present but
-        // unlit" at rest and stays visible against a light menu bar.
-        NSColor(srgbRed: r * 0.09, green: g * 0.09, blue: bl * 0.09, alpha: 1.0).setFill()
-        NSBezierPath(ovalIn: rect).fill()
-
-        // Face: radial gradient, bright core → dark edge. The core scales with `b`,
-        // then lightens toward white as it gets hot (a filament glowing up).
-        let face = rect.insetBy(dx: 1.5, dy: 1.5)
         let core = NSColor(srgbRed: min(1, r * b + (1 - r * b) * hot * 0.75),
                            green: min(1, g * b + (1 - g * b) * hot * 0.75),
                            blue: min(1, bl * b + (1 - bl * b) * hot * 0.75),

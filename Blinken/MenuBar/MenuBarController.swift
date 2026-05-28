@@ -172,26 +172,13 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             window.title = "Blinken Preferences"
             window.styleMask = [.titled, .closable]
             window.isReleasedWhenClosed = false
+            // macOS Settings convention: open centered on the main display on first
+            // create; the user can move it and subsequent opens preserve position.
+            window.center()
             preferencesWindow = window
         }
-        guard let window = preferencesWindow else { return }
-        anchorBelowStatusItem(window)
         NSApp.activate(ignoringOtherApps: true)
-        window.makeKeyAndOrderFront(nil)
-    }
-
-    /// Hangs the window from the status item: top edge just under the menu bar,
-    /// horizontally centered on the item but clamped to stay on screen. Uses the
-    /// top-left anchor so dynamic content height grows downward.
-    private func anchorBelowStatusItem(_ window: NSWindow) {
-        guard let itemWindow = statusItem.button?.window else { window.center(); return }
-        let item = itemWindow.frame
-        let visible = (itemWindow.screen ?? NSScreen.main)?.visibleFrame ?? item
-        let width = window.frame.width
-        var x = item.midX - width / 2
-        x = min(x, visible.maxX - width - 8)
-        x = max(x, visible.minX + 8)
-        window.setFrameTopLeftPoint(NSPoint(x: x, y: item.minY - 2))
+        preferencesWindow?.makeKeyAndOrderFront(nil)
     }
 
     @objc private func quit() {
