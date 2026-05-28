@@ -2,51 +2,74 @@
 //  DiskStatsSampler.swift
 //  Blinken
 //
-//  Polls IOKit IOBlockStorageDriver statistics at 120Hz, summing bytes
-//  read/written across physical devices only (PRD §2.3).
+//  Polls IOKit IOBlockStorageDriver statistics on a dedicated background queue
+//  and feeds the aggregator on the main actor. Adaptive rate: 30Hz while disk
+//  activity is happening, 5Hz after sustained idleness (PRD §2.3 originally
+//  specced 120Hz, but that produced "High" energy impact in Activity Monitor
+//  for what's effectively a small ambient indicator — 30Hz active is still
+//  visually smooth on a 14pt LED, and idle throttling lets the SoC sleep).
 //
 
 import Foundation
 import IOKit
 
-/// Drives the disk pipeline: on a dedicated `.utility` queue it polls IOKit at
-/// 120Hz, sums cumulative bytes read/written across physical block devices, and
-/// hops to the main actor to feed the `DiskStatsAggregator`.
+/// Drives the disk pipeline: polls IOKit on a `.utility` queue, sums cumulative
+/// bytes read/written across physical block devices, and hops to the main actor
+/// to feed the `DiskStatsAggregator`.
 ///
 /// `@unchecked Sendable`: all mutable state is touched only on `queue` (a serial
 /// dispatch queue), which is the synchronization domain. The only cross-queue
 /// hand-off is the per-tick ingest, which carries value types to the main actor.
 final class DiskStatsSampler: @unchecked Sendable {
 
+    // MARK: - Configuration
+
+    /// Sampling rate while disk activity is observed.
+    nonisolated static let activeHz = 30
+    /// Sampling rate after `idleThresholdSeconds` of unchanged byte counters.
+    /// Drops kernel wakeups so an idle Mac stays in low-power states (Activity
+    /// Monitor's "Energy Impact" reads Low instead of High).
+    nonisolated static let idleHz = 5
+    /// Seconds of unchanged byte counters before throttling down to `idleHz`.
+    nonisolated static let idleThresholdSeconds: Double = 3.0
+
+    private static let activeIntervalNanos = 1_000_000_000 / activeHz
+    private static let idleIntervalNanos = 1_000_000_000 / idleHz
+    /// ±5ms jitter budget — the timer may coalesce within this rather than
+    /// burst-sample to catch up (PRD §2.3, §5).
+    private static let leewayNanos = 5_000_000
+
+    // MARK: - State (touched only on `queue`)
+
     private let aggregator: DiskStatsAggregator
     private let queue = DispatchQueue(label: "com.axiomic.blinken.disk-sampler", qos: .utility)
     private var timer: DispatchSourceTimer?
 
-    // Touched only on `queue`.
     private var tickCount: UInt64 = 0
-
-    /// ~8.33 ms between ticks (120 Hz).
-    private static let intervalNanos = 1_000_000_000 / DiskStatsAggregator.sampleHz
-    /// ±2 ms jitter budget — the timer may coalesce within this rather than
-    /// burst-sample to catch up (PRD §2.3, §5).
-    private static let leewayNanos = 2_000_000
+    private var lastRead: UInt64 = 0
+    private var lastWritten: UInt64 = 0
+    private var quietTicks: UInt64 = 0
+    private var inIdleMode = false
+    private var lastHeartbeatAt: Double = 0
 
     init(aggregator: DiskStatsAggregator) {
         self.aggregator = aggregator
     }
 
-    /// Starts the 120Hz sampling timer. Idempotent.
+    // MARK: - Lifecycle
+
+    /// Starts sampling. Idempotent.
     func start() {
         queue.async { [self] in
             guard timer == nil else { return }
             let source = DispatchSource.makeTimerSource(queue: queue)
             source.schedule(deadline: .now(),
-                            repeating: .nanoseconds(Self.intervalNanos),
+                            repeating: .nanoseconds(Self.activeIntervalNanos),
                             leeway: .nanoseconds(Self.leewayNanos))
             source.setEventHandler { [self] in tick() }
             timer = source
             source.resume()
-            Log.sampling.debug("DiskStatsSampler started at \(DiskStatsAggregator.sampleHz, privacy: .public)Hz")
+            Log.sampling.debug("DiskStatsSampler started at \(Self.activeHz, privacy: .public)Hz (idle throttle: \(Self.idleHz, privacy: .public)Hz after \(Self.idleThresholdSeconds, privacy: .public)s)")
         }
     }
 
@@ -61,17 +84,35 @@ final class DiskStatsSampler: @unchecked Sendable {
     // MARK: - Per-tick sampling
 
     private func tick() {
-        // Monotonic clock — unaffected by wall-clock adjustments, so intervals
-        // stay sane even across NTP steps or sleep/wake.
+        // Monotonic clock — unaffected by wall-clock adjustments.
         let timestamp = ProcessInfo.processInfo.systemUptime
         let totals = Self.readPhysicalDiskTotals()
         tickCount &+= 1
 
-        // 1 Hz heartbeat: lets the user confirm pipeline health from the console
-        // (`log stream --predicate 'subsystem == "com.axiomic.blinken"' --level debug`,
-        // or just Xcode's console) without flooding it at 120 Hz.
-        if tickCount % UInt64(DiskStatsAggregator.sampleHz) == 0 {
-            Log.sampling.debug("disk sample #\(self.tickCount, privacy: .public): read=\(totals.read, privacy: .public)B write=\(totals.written, privacy: .public)B")
+        // Adaptive rate: if the cumulative counters didn't move, count idle ticks
+        // and eventually throttle down. First sign of activity wakes us back up.
+        let activityChanged = totals.read != lastRead || totals.written != lastWritten
+        lastRead = totals.read
+        lastWritten = totals.written
+
+        if activityChanged {
+            quietTicks = 0
+            if inIdleMode { switchToActive() }
+        } else {
+            quietTicks &+= 1
+            if !inIdleMode {
+                let secondsQuiet = Double(quietTicks) / Double(Self.activeHz)
+                if secondsQuiet >= Self.idleThresholdSeconds {
+                    switchToIdle()
+                }
+            }
+        }
+
+        // ~1Hz heartbeat regardless of sampling mode — lets `log stream` confirm
+        // the pipeline is alive without depending on tick cadence.
+        if timestamp - lastHeartbeatAt >= 1.0 {
+            lastHeartbeatAt = timestamp
+            Log.sampling.debug("disk sample #\(self.tickCount, privacy: .public): read=\(totals.read, privacy: .public)B write=\(totals.written, privacy: .public)B mode=\(self.inIdleMode ? "idle" : "active", privacy: .public)")
         }
 
         // Hop to the main actor where the aggregator publishes. `assumeIsolated`
@@ -83,6 +124,28 @@ final class DiskStatsSampler: @unchecked Sendable {
                                        totalBytesWritten: totals.written)
             }
         }
+    }
+
+    // MARK: - Mode switching
+
+    private func switchToIdle() {
+        guard !inIdleMode, let timer = timer else { return }
+        inIdleMode = true
+        quietTicks = 0
+        timer.schedule(deadline: .now() + .nanoseconds(Self.idleIntervalNanos),
+                       repeating: .nanoseconds(Self.idleIntervalNanos),
+                       leeway: .nanoseconds(Self.leewayNanos))
+        Log.sampling.debug("DiskStatsSampler throttled to \(Self.idleHz, privacy: .public)Hz (idle)")
+    }
+
+    private func switchToActive() {
+        guard inIdleMode, let timer = timer else { return }
+        inIdleMode = false
+        quietTicks = 0
+        timer.schedule(deadline: .now(),
+                       repeating: .nanoseconds(Self.activeIntervalNanos),
+                       leeway: .nanoseconds(Self.leewayNanos))
+        Log.sampling.debug("DiskStatsSampler resumed at \(Self.activeHz, privacy: .public)Hz (activity)")
     }
 
     // MARK: - IOKit
