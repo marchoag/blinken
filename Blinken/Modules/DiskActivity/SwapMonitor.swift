@@ -43,6 +43,10 @@ final class SwapMonitor: ObservableObject {
     /// Latest kernel memory-pressure reading.
     @Published private(set) var pressure: Pressure = .normal
 
+    /// Bytes of physical RAM currently in active use — approximates Activity
+    /// Monitor's "Memory Used": (active + wired + compressed) × page size.
+    @Published private(set) var ramUsedBytes: UInt64 = 0
+
     /// Total physical RAM (`hw.memsize`), captured once at init. The swap bar's
     /// stable denominator — the kernel-allocated swap pool grows on demand on
     /// macOS, so `used / pool` slides with usage; `used / RAM` is the real
@@ -78,6 +82,9 @@ final class SwapMonitor: ObservableObject {
             swapUsedBytes = usage.xsu_used
         }
 
+        // RAM "Memory Used" via host_statistics64 (active + wired + compressed pages).
+        ramUsedBytes = Self.readRAMUsedBytes()
+
         // kern.memorystatus_vm_pressure_level → 1/2/4 (DISPATCH_MEMORYPRESSURE_*).
         var level: Int32 = 1
         var levelSize = MemoryLayout<Int32>.size
@@ -97,5 +104,27 @@ final class SwapMonitor: ObservableObject {
             return bytes
         }
         return ProcessInfo.processInfo.physicalMemory
+    }
+
+    /// Approximates Activity Monitor's "Memory Used" — (wired + active + compressed)
+    /// pages × page size — via `host_statistics64` with `HOST_VM_INFO64`. Excludes
+    /// inactive/cached pages (which macOS keeps around as "free" buffers).
+    nonisolated private static func readRAMUsedBytes() -> UInt64 {
+        var stats = vm_statistics64_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64_data_t>.size / MemoryLayout<integer_t>.size)
+        let kr = withUnsafeMutablePointer(to: &stats) { ptr -> kern_return_t in
+            ptr.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { rebound in
+                host_statistics64(mach_host_self(), HOST_VM_INFO64, rebound, &count)
+            }
+        }
+        guard kr == KERN_SUCCESS else { return 0 }
+        // `vm_kernel_page_size` is a mutable global → not concurrency-safe in
+        // Swift 6 strict mode. `getpagesize()` is the POSIX equivalent (4096 on
+        // Apple Silicon) and thread-safe.
+        let pageSize = UInt64(getpagesize())
+        let usedPages = UInt64(stats.wire_count)
+            + UInt64(stats.active_count)
+            + UInt64(stats.compressor_page_count)
+        return usedPages * pageSize
     }
 }
