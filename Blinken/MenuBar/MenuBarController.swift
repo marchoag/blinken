@@ -192,7 +192,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             window.styleMask = [.titled, .closable]
             window.isReleasedWhenClosed = false
             // Force the content size so centering math has a stable frame.
-            window.setContentSize(NSSize(width: 400, height: 500))
+            // Must match PreferencesView's `.frame(...)` — kept in sync manually.
+            window.setContentSize(NSSize(width: 560, height: 600))
             preferencesWindow = window
             // NSWindow.center() only centers horizontally and pins y near the top of
             // the screen — on a notched display that lands the window against the

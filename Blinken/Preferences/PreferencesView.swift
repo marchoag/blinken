@@ -16,7 +16,9 @@ struct PreferencesView: View {
     var body: some View {
         Form {
             Section("Disk LED") {
-                LabeledContent("Color") {
+                HStack(alignment: .center) {
+                    Text("Color")
+                    Spacer()
                     ColorPicker("Color", selection: $settings.ledColor, supportsOpacity: false)
                         .labelsHidden()
                 }
@@ -26,7 +28,9 @@ struct PreferencesView: View {
             }
 
             Section("Swap bar") {
-                LabeledContent("Color") {
+                HStack(alignment: .center) {
+                    Text("Color")
+                    Spacer()
                     ColorPicker("Color", selection: $settings.swapColor, supportsOpacity: false)
                         .labelsHidden()
                 }
