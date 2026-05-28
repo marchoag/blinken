@@ -7,6 +7,7 @@
 //
 
 import AppKit
+import SwiftUI
 
 /// Owns the menu bar status item: hosts the `LEDView`, drives its brightness from
 /// the `DiskStatsAggregator` on a ~60Hz render loop, and presents the dropdown.
@@ -22,6 +23,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     private var renderTimer: Timer?
     private var menuRefreshTimer: Timer?
+    private var preferencesWindow: NSWindow?
 
     private let readItem = NSMenuItem(title: "Read:  —", action: nil, keyEquivalent: "")
     private let writeItem = NSMenuItem(title: "Write:  —", action: nil, keyEquivalent: "")
@@ -134,10 +136,21 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     // MARK: - Actions
 
+    /// Opens (or re-focuses) the preferences window. We host `PreferencesView` in
+    /// our own `NSWindow` rather than the SwiftUI `Settings` scene — for an
+    /// LSUIElement app there's no app menu to reach Settings, and the AppKit
+    /// `showSettingsWindow:` selector is deprecated on macOS 14+ ("use SettingsLink").
     @objc private func openPreferences() {
+        if preferencesWindow == nil {
+            let window = NSWindow(contentViewController: NSHostingController(rootView: PreferencesView()))
+            window.title = "Blinken Preferences"
+            window.styleMask = [.titled, .closable]
+            window.isReleasedWhenClosed = false
+            window.center()
+            preferencesWindow = window
+        }
         NSApp.activate(ignoringOtherApps: true)
-        // macOS 14+ renamed the Settings action selector.
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        preferencesWindow?.makeKeyAndOrderFront(nil)
     }
 
     @objc private func quit() {
