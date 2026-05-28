@@ -210,16 +210,20 @@ final class DiskStatsAggregatorTests: XCTestCase {
         }
         XCTAssertEqual(aggregator.totalBytesRead, read,
                        "Cumulative total should equal the latest raw counter reading.")
+        XCTAssertEqual(aggregator.sessionBytesRead, read,
+                       "Session bytes-read should track deltas since the first sample.")
         XCTAssertEqual(aggregator.smoothedReadRateBytesPerSec, expectedRate, accuracy: expectedRate * 0.05,
                        "Smoothed read rate should converge to the sustained throughput.")
 
-        // Now go idle for ~5s (counter unchanged) → smoothed decays, total holds.
+        // Now go idle for ~5s (counter unchanged) → smoothed decays, totals hold.
         let totalAfterActive = read
         for i in 601...1200 {
             aggregator.ingest(timestamp: Double(i) * interval, totalBytesRead: read, totalBytesWritten: 0)
         }
         XCTAssertEqual(aggregator.totalBytesRead, totalAfterActive,
                        "Cumulative total must not reset/drop while idle (only on restart).")
+        XCTAssertEqual(aggregator.sessionBytesRead, totalAfterActive,
+                       "Session counter must not drop while idle either.")
         XCTAssertLessThan(aggregator.smoothedReadRateBytesPerSec, expectedRate * 0.05,
                           "Smoothed rate should decay toward 0 after sustained idle.")
     }

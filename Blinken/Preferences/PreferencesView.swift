@@ -32,7 +32,9 @@ struct PreferencesView: View {
 
             Section {
                 VStack(spacing: 4) {
-                    Link("Marc Hoag", destination: URL(string: "https://marchoag.com")!)
+                    // SwiftUI's Text parses markdown — the link inside renders as a
+                    // tappable link only on "Marc Hoag".
+                    Text("Made with ❤️ in Marin County, CA by [Marc Hoag](https://marchoag.com)")
                     Link("© 2026 Axiomic, LLC", destination: URL(string: "https://axiomic.ai")!)
                     Text(versionString).font(.caption).foregroundStyle(.secondary)
                 }
@@ -41,10 +43,11 @@ struct PreferencesView: View {
             }
         }
         .formStyle(.grouped)
+        .scrollIndicators(.hidden)
         // Fixed size sized to fit all sections (incl. the About footer) without
         // scrolling. Avoids the NSHostingController preferredContentSize constraint
         // loop that a self-sizing window triggers.
-        .frame(width: 400, height: 470)
+        .frame(width: 400, height: 500)
     }
 
     private var versionString: String {

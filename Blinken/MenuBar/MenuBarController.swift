@@ -9,17 +9,17 @@
 import AppKit
 import SwiftUI
 
-/// Owns the menu bar status item: hosts the `LEDView`, drives its brightness from
-/// the `DiskStatsAggregator` on a ~60Hz render loop, and presents the dropdown.
-///
-/// Phase 3 wires the LED + a minimal disk-activity menu; the swap bar and the
-/// memory section land with the SwapMonitor phase.
+/// Owns the menu bar status item: hosts the `LEDView` and `SwapBarView`, drives
+/// them from `DiskStatsAggregator` and `SwapMonitor` on a ~60Hz render loop, and
+/// presents the dropdown (Disk Activity + Memory + Preferences + Quit).
 @MainActor
 final class MenuBarController: NSObject, NSMenuDelegate {
 
     private let aggregator: DiskStatsAggregator
+    private let swap: SwapMonitor
     private let statusItem: NSStatusItem
     private let ledView: LEDView
+    private let swapBarView: SwapBarView
 
     private var renderTimer: Timer?
     private var menuRefreshTimer: Timer?
@@ -27,23 +27,29 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     private let readItem = NSMenuItem(title: "Read:  —", action: nil, keyEquivalent: "")
     private let writeItem = NSMenuItem(title: "Write:  —", action: nil, keyEquivalent: "")
+    private let swapItem = NSMenuItem(title: "Swap used:  —", action: nil, keyEquivalent: "")
+    private let pressureItem = NSMenuItem(title: "Pressure:  —", action: nil, keyEquivalent: "")
 
-    init(aggregator: DiskStatsAggregator) {
+    init(aggregator: DiskStatsAggregator, swap: SwapMonitor) {
         self.aggregator = aggregator
-        self.statusItem = NSStatusBar.system.statusItem(withLength: 26)
+        self.swap = swap
+        // Composite item: LED slot (≈22pt) + small gap + swap-bar slot (≈12pt).
+        self.statusItem = NSStatusBar.system.statusItem(withLength: 36)
         let thickness = NSStatusBar.system.thickness
-        self.ledView = LEDView(frame: NSRect(x: 0, y: 0, width: 26, height: thickness))
+        self.ledView = LEDView(frame: NSRect(x: 0, y: 0, width: 22, height: thickness))
+        self.swapBarView = SwapBarView(frame: NSRect(x: 24, y: 0, width: 12, height: thickness))
         super.init()
         configure()
     }
 
     private func configure() {
         if let button = statusItem.button {
-            ledView.frame = button.bounds
-            ledView.autoresizingMask = [.width, .height]
+            // Explicit frames partition the button into LED + swap slots; status item
+            // length is fixed, so no autoresizing needed.
             button.image = nil
             button.title = ""
             button.addSubview(ledView)
+            button.addSubview(swapBarView)
         }
         statusItem.menu = makeMenu()
         startRenderLoop()
@@ -51,7 +57,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     // MARK: - Render loop (PRD §1.2)
 
-    /// Pulls the latest aggregated value at ~60Hz and maps it to LED brightness.
+    /// Pulls the latest aggregated values at ~60Hz and updates both views.
     /// `.common` run-loop mode keeps it ticking during menu tracking / window drags.
     private func startRenderLoop() {
         let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
@@ -80,6 +86,15 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             let ratio = ceiling > 0 ? aggregator.instantaneousRateBytesPerSec / ceiling : 0
             ledView.brightness = max(LEDView.minBrightness, min(1.0, CGFloat(ratio)))
         }
+
+        // Swap bar: fraction = swap used / total system RAM. Stable denominator;
+        // the kernel-allocated pool grows on demand on macOS, so used/RAM is what
+        // actually signals memory pressure. Live tint from settings.
+        let ram = swap.systemRAMBytes
+        let raw = ram > 0 ? CGFloat(swap.swapUsedBytes) / CGFloat(ram) : 0
+        let fraction = max(0, min(1, raw))
+        if swapBarView.usedFraction != fraction { swapBarView.usedFraction = fraction }
+        if swapBarView.tintColor != settings.swapNSColor { swapBarView.tintColor = settings.swapNSColor }
     }
 
     // MARK: - Menu (PRD §1.4)
@@ -88,10 +103,16 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         let menu = NSMenu()
         menu.delegate = self
 
-        let header = NSMenuItem(title: "Disk Activity", action: nil, keyEquivalent: "")
-        menu.addItem(header)
+        let diskHeader = NSMenuItem(title: "Disk Activity", action: nil, keyEquivalent: "")
+        menu.addItem(diskHeader)
         menu.addItem(readItem)
         menu.addItem(writeItem)
+        menu.addItem(.separator())
+
+        let memoryHeader = NSMenuItem(title: "Memory", action: nil, keyEquivalent: "")
+        menu.addItem(memoryHeader)
+        menu.addItem(swapItem)
+        menu.addItem(pressureItem)
         menu.addItem(.separator())
 
         let prefs = NSMenuItem(title: "Preferences…", action: #selector(openPreferences), keyEquivalent: ",")
@@ -107,8 +128,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         return menu
     }
 
-    /// Refresh the read/write rows when the menu opens, then keep them live at 1Hz
-    /// while it stays open (PRD §1.4).
+    /// Refresh menu rows when it opens, then keep them live at 1Hz while open
+    /// (PRD §1.4).
     func menuWillOpen(_ menu: NSMenu) {
         refreshRates()
         let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
@@ -124,21 +145,32 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
 
     private func refreshRates() {
-        // Smoothed rate (steady, non-flickering) + cumulative total (odometer).
-        readItem.title = "Read:   \(Self.formatRate(aggregator.smoothedReadRateBytesPerSec))   (\(Self.formatBytes(aggregator.totalBytesRead)))"
-        writeItem.title = "Write:   \(Self.formatRate(aggregator.smoothedWriteRateBytesPerSec))   (\(Self.formatBytes(aggregator.totalBytesWritten)))"
+        // Disk amounts only — the menu is the odometer; the LED conveys live rate.
+        //   primary = bytes since app launch (this session)
+        //   parens  = bytes since last reboot (raw IOKit counter)
+        readItem.title  = "Read:   \(Self.formatBytes(aggregator.sessionBytesRead))   (\(Self.formatBytes(aggregator.totalBytesRead)))"
+        writeItem.title = "Write:   \(Self.formatBytes(aggregator.sessionBytesWritten))   (\(Self.formatBytes(aggregator.totalBytesWritten)))"
+
+        // Memory: swap used + % of system RAM (stable reference) + pressure level.
+        let used = swap.swapUsedBytes
+        let ram = swap.systemRAMBytes
+        let pct = ram > 0 ? Int((Double(used) / Double(ram) * 100).rounded()) : 0
+        swapItem.title = "Swap used:   \(Self.formatBytesMemory(used))   (\(pct)% of \(Self.formatBytesMemory(ram)) RAM)"
+        pressureItem.title = "Pressure:   \(swap.pressure.label)"
     }
 
-    private static func formatRate(_ bytesPerSec: Double) -> String {
-        let mb = bytesPerSec / (1024 * 1024)
-        if mb >= 1 { return String(format: "%.1f MB/s", mb) }
-        return String(format: "%.0f KB/s", bytesPerSec / 1024)
-    }
-
-    /// Human-readable cumulative total (e.g. "661.3 GB"), matching the OS's figures.
+    /// Human-readable disk total (e.g. "661.3 GB"); decimal GB to match Activity
+    /// Monitor / drive manufacturers' conventions.
     private static func formatBytes(_ bytes: UInt64) -> String {
         let capped = bytes > UInt64(Int64.max) ? Int64.max : Int64(bytes)
         return ByteCountFormatter.string(fromByteCount: capped, countStyle: .file)
+    }
+
+    /// Memory-style formatting (1 GB = 2³⁰ B) — matches Apple's marketing numbers
+    /// for RAM and swap, i.e. what users expect when reading "24 GB."
+    private static func formatBytesMemory(_ bytes: UInt64) -> String {
+        let capped = bytes > UInt64(Int64.max) ? Int64.max : Int64(bytes)
+        return ByteCountFormatter.string(fromByteCount: capped, countStyle: .memory)
     }
 
     // MARK: - Actions
@@ -154,26 +186,29 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             window.title = "Blinken Preferences"
             window.styleMask = [.titled, .closable]
             window.isReleasedWhenClosed = false
+            // Force the content size so centering math has a stable frame.
+            window.setContentSize(NSSize(width: 400, height: 500))
             preferencesWindow = window
+            // NSWindow.center() only centers horizontally and pins y near the top of
+            // the screen — on a notched display that lands the window against the
+            // notch. Center within the screen's *visible* frame (below menu bar /
+            // above dock) instead.
+            centerOnVisibleFrame(window)
         }
-        guard let window = preferencesWindow else { return }
-        anchorBelowStatusItem(window)
         NSApp.activate(ignoringOtherApps: true)
-        window.makeKeyAndOrderFront(nil)
+        preferencesWindow?.makeKeyAndOrderFront(nil)
     }
 
-    /// Hangs the window from the status item: top edge just under the menu bar,
-    /// horizontally centered on the item but clamped to stay on screen. Uses the
-    /// top-left anchor so dynamic content height grows downward.
-    private func anchorBelowStatusItem(_ window: NSWindow) {
-        guard let itemWindow = statusItem.button?.window else { window.center(); return }
-        let item = itemWindow.frame
-        let visible = (itemWindow.screen ?? NSScreen.main)?.visibleFrame ?? item
-        let width = window.frame.width
-        var x = item.midX - width / 2
-        x = min(x, visible.maxX - width - 8)
-        x = max(x, visible.minX + 8)
-        window.setFrameTopLeftPoint(NSPoint(x: x, y: item.minY - 2))
+    private func centerOnVisibleFrame(_ window: NSWindow) {
+        let screen = statusItem.button?.window?.screen ?? NSScreen.main ?? NSScreen.screens.first
+        guard let visible = screen?.visibleFrame else { window.center(); return }
+        let w = window.frame.width
+        let h = window.frame.height
+        let origin = NSPoint(
+            x: visible.minX + (visible.width - w) / 2,
+            y: visible.minY + (visible.height - h) / 2
+        )
+        window.setFrameOrigin(origin)
     }
 
     @objc private func quit() {

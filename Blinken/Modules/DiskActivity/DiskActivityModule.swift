@@ -20,15 +20,20 @@ final class DiskActivityModule {
     /// Published rate signals for the views to observe.
     let aggregator = DiskStatsAggregator()
 
+    /// Published swap and memory-pressure state for the views to observe.
+    let swap = SwapMonitor()
+
     private lazy var sampler = DiskStatsSampler(aggregator: aggregator)
 
-    /// Begins 120Hz disk sampling.
+    /// Begins 120Hz disk sampling and 1Hz swap/pressure polling.
     func start() {
         sampler.start()
+        swap.start()
     }
 
-    /// Stops disk sampling.
+    /// Stops disk sampling and swap polling.
     func stop() {
         sampler.stop()
+        swap.stop()
     }
 }

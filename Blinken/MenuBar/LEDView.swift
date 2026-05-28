@@ -57,35 +57,28 @@ final class LEDView: NSView {
         if glowAlpha > 0.002 {
             let d = (min(bounds.width, bounds.height) - 1) * (0.9 + 0.1 * hot)
             let glowRect = NSRect(x: center.x - d / 2, y: center.y - d / 2, width: d, height: d)
-            let glowColor = NSColor(srgbRed: min(1, r + 0.15 * hot),
-                                    green: min(1, g + 0.15 * hot),
-                                    blue: min(1, bl + 0.15 * hot),
-                                    alpha: glowAlpha)
+            // Saturated tint — no white mixing — so the halo reads as vivid red
+            // (or whatever tint) instead of pastel pink at high brightness.
+            let glowColor = NSColor(srgbRed: r, green: g, blue: bl, alpha: glowAlpha)
             if let glow = NSGradient(colors: [glowColor, glowColor.withAlphaComponent(0)],
                                      atLocations: [0.0, 1.0], colorSpace: .sRGB) {
                 glow.draw(in: NSBezierPath(ovalIn: glowRect), relativeCenterPosition: .zero)
             }
         }
 
-        // 2. LED body.
-        let rect = NSRect(
+        // 2. LED face: radial gradient (bright core → dark edge). The core scales
+        //    with `b`, then lightens toward white as it gets hot (a filament
+        //    glowing up). No separate bezel — the gradient's own dark edge is the
+        //    rim, so the outer glow flows continuously into the lamp without a
+        //    black "ring" interrupting it.
+        let face = NSRect(
             x: (center.x - Self.diameter / 2).rounded(),
             y: (center.y - Self.diameter / 2).rounded(),
             width: Self.diameter,
             height: Self.diameter)
-
-        // Bezel: a dim, near-black tint ring so the lamp reads as "present but
-        // unlit" at rest and stays visible against a light menu bar.
-        NSColor(srgbRed: r * 0.09, green: g * 0.09, blue: bl * 0.09, alpha: 1.0).setFill()
-        NSBezierPath(ovalIn: rect).fill()
-
-        // Face: radial gradient, bright core → dark edge. The core scales with `b`,
-        // then lightens toward white as it gets hot (a filament glowing up).
-        let face = rect.insetBy(dx: 1.5, dy: 1.5)
-        let core = NSColor(srgbRed: min(1, r * b + (1 - r * b) * hot * 0.75),
-                           green: min(1, g * b + (1 - g * b) * hot * 0.75),
-                           blue: min(1, bl * b + (1 - bl * b) * hot * 0.75),
-                           alpha: 1.0)
+        // Saturated tint scaled by brightness — the lamp stays vivid; the specular
+        // highlight below provides the "lit" cue without desaturating the body.
+        let core = NSColor(srgbRed: r * b, green: g * b, blue: bl * b, alpha: 1.0)
         let edge = NSColor(srgbRed: r * 0.4 * b, green: g * 0.4 * b, blue: bl * 0.4 * b, alpha: 1.0)
         if let gradient = NSGradient(starting: core, ending: edge) {
             gradient.draw(in: NSBezierPath(ovalIn: face), relativeCenterPosition: NSPoint(x: 0, y: 0.22))
@@ -94,11 +87,12 @@ final class LEDView: NSView {
             NSBezierPath(ovalIn: face).fill()
         }
 
-        // 3. Specular highlight — a soft white spot near the top for a glassy,
-        //    domed lamp look; fades in with brightness.
-        let hi = face.insetBy(dx: face.width * 0.30, dy: face.height * 0.30)
+        // 3. Specular highlight — a small glassy glint near the top. Kept tight +
+        //    low alpha so it gives a "lit lamp" cue without washing the body into
+        //    pastel.
+        let hi = face.insetBy(dx: face.width * 0.35, dy: face.height * 0.35)
                      .offsetBy(dx: 0, dy: face.height * 0.18)
-        NSColor(white: 1.0, alpha: 0.40 * b).setFill()
+        NSColor(white: 1.0, alpha: 0.30 * b).setFill()
         NSBezierPath(ovalIn: hi).fill()
     }
 }
