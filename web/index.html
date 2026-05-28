@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Blinken — Bring back the blink</title>
+    <meta name="description" content="A macOS menu bar utility that resurrects the HDD activity LED of pre-2010 personal computers. Quietly alive in your menu bar. Free, local-only, MIT licensed.">
+
+    <link rel="canonical" href="https://blinken.app">
+    <meta property="og:title" content="Blinken — Bring back the blink">
+    <meta property="og:description" content="A small red lamp in your menu bar, brightening when your disk is working. The ambient HDD activity LED, restored.">
+    <meta property="og:type" content="website">
+
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3CradialGradient id='g' cx='50%25' cy='38%25'%3E%3Cstop offset='0%25' stop-color='%23fff5ed'/%3E%3Cstop offset='12%25' stop-color='%23ff7a5d'/%3E%3Cstop offset='40%25' stop-color='%23e11c1c'/%3E%3Cstop offset='100%25' stop-color='%233a0606'/%3E%3C/radialGradient%3E%3C/defs%3E%3Ccircle cx='16' cy='16' r='11.5' fill='url(%23g)'/%3E%3C/svg%3E">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://api.fontshare.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,300..700,0..100;1,9..144,300..700,0..100&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <nav class="site-nav">
+        <a href="/" class="wordmark">
+            <span class="led-mini" aria-hidden="true"></span>
+            <span>Blinken</span>
+        </a>
+        <a href="#download" class="nav-cta">Download</a>
+    </nav>
+
+    <main>
+
+        <section class="hero">
+            <p class="kicker">macOS menu bar utility · v1.0</p>
+
+            <div class="led-stage" aria-hidden="true">
+                <div class="led"></div>
+            </div>
+
+            <h1>Bring back<br><span class="it">the blink.</span></h1>
+
+            <p class="lede">
+                A small red lamp in your menu bar, brightening when your disk is working.
+                The ambient HDD-activity LED of pre-2010 personal computers — restored, as software.
+            </p>
+
+            <div class="cta-row">
+                <a href="#download" id="download" class="btn-primary">
+                    Download for macOS
+                    <span class="arrow" aria-hidden="true"></span>
+                </a>
+                <span class="cta-meta">macOS 15+ &nbsp;·&nbsp; Apple Silicon &amp; Intel &nbsp;·&nbsp; Free</span>
+            </div>
+        </section>
+
+        <section class="section" id="features">
+            <header class="section-head">
+                <p class="section-eyebrow">What it does</p>
+                <h2>Quietly alive. <em>Always honest.</em></h2>
+            </header>
+
+            <div class="feature-grid">
+
+                <article class="feature">
+                    <div class="feature-icon">
+                        <div class="led" style="animation-duration:5.2s"></div>
+                    </div>
+                    <h3>Live disk activity</h3>
+                    <p>
+                        Sampled at 120 Hz under the hood; rendered at your display's refresh rate.
+                        The LED brightens with real disk throughput — bursty I/O reads as flicker,
+                        sustained transfers glow steady.
+                    </p>
+                </article>
+
+                <article class="feature">
+                    <div class="feature-icon">
+                        <div class="swap-bar" aria-hidden="true"></div>
+                    </div>
+                    <h3>Memory pressure</h3>
+                    <p>
+                        A slim amber bar fills with swap depth relative to your RAM.
+                        Warms toward orange when your Mac is leaning on the swap file —
+                        a glanceable second indicator beside the LED.
+                    </p>
+                </article>
+
+                <article class="feature">
+                    <div class="feature-icon">
+                        <div class="menu-glyph" aria-hidden="true">
+                            <i></i><i></i><i></i>
+                        </div>
+                    </div>
+                    <h3>The numbers, on click</h3>
+                    <p>
+                        Open the dropdown for read &amp; write totals since boot, RAM in use,
+                        swap on disk, and the kernel's pressure level — the same metrics
+                        Activity Monitor shows, one click away from anywhere.
+                    </p>
+                </article>
+
+            </div>
+        </section>
+
+        <section class="philosophy">
+            <header class="section-head">
+                <p class="section-eyebrow">Why</p>
+                <h2>For people who miss when computers <em>told you things.</em></h2>
+            </header>
+
+            <div class="philosophy-body">
+                <p>
+                    Personal computers used to talk to you. A red LED flickered when the hard drive
+                    was working. A green light glowed when your modem connected. Tiny VU meters
+                    jumped to the rhythm of your music. The machine was alive on its surface — and
+                    you knew, at a glance, what it was doing.
+                </p>
+                <p>
+                    Then came laptops, sealed enclosures, unified memory, silent SSDs. The lights
+                    went away. The machines became opaque. You can still see what your computer is
+                    doing — but only by stopping what you're doing, opening Activity Monitor, and
+                    looking.
+                </p>
+                <p>
+                    Blinken brings the LED back. As software, in your menu bar, exactly where it
+                    was on a beige tower in 1998. <em>Ambient. Quiet. There when you need it,
+                    invisible when you don't.</em>
+                </p>
+            </div>
+        </section>
+
+        <section class="privacy-band">
+            <h2>Yours. Local. <em>Quiet.</em></h2>
+            <p>
+                Blinken reads your Mac's disk activity through IOKit and memory stats through
+                standard macOS APIs. That's it. No accounts, no telemetry, no servers, no data
+                ever leaves your machine. Your preferences sit in your user defaults.
+                The app is open source under the MIT license.
+            </p>
+            <div class="privacy-meta">
+                <span>No tracking</span>
+                <span>No accounts</span>
+                <span>No network</span>
+                <span>MIT licensed</span>
+            </div>
+        </section>
+
+        <section class="byline">
+            <p>
+                Made with <span class="heart">❤</span> in Marin County, California by
+                <a href="https://marchoag.com">Marc Hoag</a>.
+            </p>
+        </section>
+
+    </main>
+
+    <footer>
+        <div class="footer-inner">
+            <div class="footer-meta">
+                © 2026 <a href="https://axiomic.ai">Axiomic, LLC</a>
+            </div>
+            <nav class="footer-links" aria-label="Footer">
+                <a href="privacy.html">Privacy</a>
+                <a href="terms.html">Terms</a>
+                <a href="mailto:marc@marchoag.com?subject=Blinken:%20">Feedback</a>
+            </nav>
+        </div>
+    </footer>
+
+</body>
+</html>
