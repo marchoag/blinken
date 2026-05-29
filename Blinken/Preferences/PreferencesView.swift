@@ -62,6 +62,10 @@ struct PreferencesView: View {
                             .padding(.top, 2)
                         Link("Send Feedback", destination: Self.feedbackURL)
                             .font(.callout)
+                        // Privacy + Terms live on the website; linking here keeps the
+                        // app transparent without bloating the About section.
+                        Text("[Privacy](https://labs.axiomic.ai/blinken/privacy.html)  ·  [Terms](https://labs.axiomic.ai/blinken/terms.html)")
+                            .font(.callout)
                         // Only "Axiomic, LLC" is the hyperlink — "© 2026" stays plain.
                         Text("© 2026 [Axiomic, LLC](https://axiomic.ai)")
                             .font(.callout)
