@@ -31,7 +31,7 @@
 #
 # ─── Usage ───────────────────────────────────────────────────────────────
 #
-#   DEVELOPER_ID="Developer ID Application: Marc Hoag (XXXXXXXXXX)" \
+#   DEVELOPER_ID="Developer ID Application: Axiomic, LLC (XXXXXXXXXX)" \
 #   NOTARY_PROFILE="BLINKEN_NOTARY" \
 #   ./scripts/release.sh
 #
