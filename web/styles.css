@@ -31,7 +31,7 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
-html { scroll-behavior: smooth; }
+html { scroll-behavior: smooth; overflow-x: hidden; }
 
 body {
     font-family: var(--body);
@@ -141,9 +141,10 @@ a:hover { text-decoration-color: var(--led-red); }
     position: absolute;
     top: 20%;
     left: 50%;
-    width: 1100px;
+    width: min(1100px, 150vw);
     height: 900px;
     transform: translateX(-50%);
+    max-width: 100vw;
     background: radial-gradient(
         ellipse 50% 50% at 50% 40%,
         rgba(225, 28, 28, 0.09) 0%,
@@ -308,8 +309,10 @@ a:hover { text-decoration-color: var(--led-red); }
     font-size: 12px;
     letter-spacing: 0.06em;
     color: var(--subdued);
-    white-space: nowrap;
+    text-align: center;
 }
+/* keep each unit intact; allow wrapping only at the separators */
+.cta-meta > span { white-space: nowrap; }
 
 /* hero entry animation */
 .hero .kicker  { opacity: 0; animation: rise .9s ease .15s forwards; }
