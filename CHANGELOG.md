@@ -2,6 +2,22 @@
 
 All notable changes to Blinken. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2] – 2026-07-19
+
+### Changed
+
+- **The disk odometer is now yours to anchor.** Read and Write each show a single total, measured from a point you control. A new row reports the span those totals cover (“Measuring for 3h 42m”); clicking it rebases both to zero and restarts the clock — useful when you want to watch what a specific copy, build, or backup actually costs.
+
+### Removed
+
+- **The since-boot figure in parentheses** on the Read and Write rows. For anyone launching Blinken at login it sat within a fraction of a percent of the session total, and a number that only grows and can't be reset isn't one you can act on. The since-boot counters are still what macOS reports in Activity Monitor if you want them.
+
+## [1.0.1] – 2026-05-29
+
+### Fixed
+
+- Privacy Policy and Terms in the Preferences About section are now clickable links.
+
 ## [1.0.0] – 2026-05-28
 
 Initial release.
@@ -18,4 +34,6 @@ Initial release.
 
 Local-only. Reads `IOKit` disk counters and standard macOS memory APIs. No accounts, no telemetry, no network requests, no data leaves your machine.
 
+[1.0.2]: https://github.com/marchoag/blinken/releases/tag/v1.0.2
+[1.0.1]: https://github.com/marchoag/blinken/releases/tag/v1.0.1
 [1.0.0]: https://github.com/marchoag/blinken/releases/tag/v1.0.0

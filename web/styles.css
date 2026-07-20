@@ -314,6 +314,38 @@ a:hover { text-decoration-color: var(--led-red); }
 /* keep each unit intact; allow wrapping only at the separators */
 .cta-meta > span { white-space: nowrap; }
 
+/* Version + why-there's-no-update-checker. Deliberately quiet: it's an answer for
+   the person who goes looking, not a pitch. Sits below the CTA meta line so it
+   never competes with the download button. */
+.version-note {
+    /* .cta-row is a wrapping flex container; claim a full line so this never rides
+       up beside .cta-meta. The row's 22px gap supplies the spacing above. */
+    flex-basis: 100%;
+    max-width: 46ch;
+    margin: 0 auto;
+    font-size: 12.5px;
+    line-height: 1.65;
+    text-align: center;
+    color: var(--subdued);
+    opacity: 0.72;
+}
+.version-note .version-tag {
+    font-family: var(--mono);
+    letter-spacing: 0.06em;
+    /* faint chip so the number is scannable without a heading */
+    border: 1px solid currentColor;
+    border-radius: 3px;
+    padding: 0.1em 0.4em;
+    margin-right: 0.15em;
+    white-space: nowrap;
+}
+.version-note a {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+.version-note a:hover { opacity: 0.75; }
+
 /* hero entry animation */
 .hero .kicker  { opacity: 0; animation: rise .9s ease .15s forwards; }
 .led-stage     { opacity: 0; animation: rise 1.1s ease .35s forwards; }

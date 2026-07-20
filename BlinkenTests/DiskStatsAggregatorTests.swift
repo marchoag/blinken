@@ -227,4 +227,77 @@ final class DiskStatsAggregatorTests: XCTestCase {
         XCTAssertLessThan(aggregator.smoothedReadRateBytesPerSec, expectedRate * 0.05,
                           "Smoothed rate should decay toward 0 after sustained idle.")
     }
+
+    // MARK: - 6. Session odometer reset
+
+    /// Resetting rebases the session odometer to now: session totals and the elapsed
+    /// clock zero out, the raw since-boot counters are untouched, and subsequent
+    /// samples accumulate from the new anchor.
+    func testResetRebasesSessionOdometer() {
+        let perTick: UInt64 = 1_000_000
+        let aggregator = DiskStatsAggregator()
+        var read: UInt64 = 0
+        var write: UInt64 = 0
+        aggregator.ingest(timestamp: 0, totalBytesRead: 0, totalBytesWritten: 0)
+
+        for i in 1...600 {
+            read &+= perTick
+            write &+= perTick / 2
+            aggregator.ingest(timestamp: Double(i) * interval, totalBytesRead: read, totalBytesWritten: write)
+        }
+        let bootTotalRead = aggregator.totalBytesRead
+        XCTAssertEqual(aggregator.sessionBytesRead, read)
+        XCTAssertEqual(aggregator.sessionElapsedSeconds, 600 * interval, accuracy: 1e-9)
+
+        aggregator.resetSessionCounters()
+
+        XCTAssertEqual(aggregator.sessionBytesRead, 0, "Reset should zero the session read odometer.")
+        XCTAssertEqual(aggregator.sessionBytesWritten, 0, "Reset should zero the session write odometer.")
+        XCTAssertEqual(aggregator.sessionElapsedSeconds, 0, "Reset should restart the elapsed clock.")
+        XCTAssertEqual(aggregator.totalBytesRead, bootTotalRead,
+                       "Reset must not disturb the raw since-boot counter.")
+
+        // Post-reset samples accumulate from the new anchor, not from app launch.
+        for i in 601...900 {
+            read &+= perTick
+            aggregator.ingest(timestamp: Double(i) * interval, totalBytesRead: read, totalBytesWritten: write)
+        }
+        XCTAssertEqual(aggregator.sessionBytesRead, perTick * 300,
+                       "Session total should count only bytes since the reset.")
+        XCTAssertEqual(aggregator.sessionElapsedSeconds, 300 * interval, accuracy: 1e-9,
+                       "Elapsed should measure only the span since the reset.")
+        XCTAssertEqual(aggregator.totalBytesRead, read,
+                       "Raw counter should keep tracking the latest reading across a reset.")
+    }
+
+    /// Reset before any sample has landed is a no-op: the baseline is captured by the
+    /// first ingest as usual. (Rebasing onto the pre-ingest zeros would make the first
+    /// sample report the entire since-boot total as session traffic.)
+    func testResetBeforeFirstSampleIsNoOp() {
+        let aggregator = DiskStatsAggregator()
+        aggregator.resetSessionCounters()
+
+        let sinceBoot: UInt64 = 500_000_000_000
+        aggregator.ingest(timestamp: 10, totalBytesRead: sinceBoot, totalBytesWritten: sinceBoot)
+        XCTAssertEqual(aggregator.sessionBytesRead, 0,
+                       "First sample must set the baseline, not be counted as session traffic.")
+
+        aggregator.ingest(timestamp: 11, totalBytesRead: sinceBoot + 1_000, totalBytesWritten: sinceBoot)
+        XCTAssertEqual(aggregator.sessionBytesRead, 1_000)
+        XCTAssertEqual(aggregator.sessionElapsedSeconds, 1.0, accuracy: 1e-9)
+    }
+
+    // MARK: - 7. Elapsed formatting
+
+    func testElapsedFormatting() {
+        XCTAssertEqual(MenuBarController.formatElapsed(0), "0s")
+        XCTAssertEqual(MenuBarController.formatElapsed(47), "47s")
+        XCTAssertEqual(MenuBarController.formatElapsed(59.9), "59s")
+        XCTAssertEqual(MenuBarController.formatElapsed(60), "1m")
+        XCTAssertEqual(MenuBarController.formatElapsed(12 * 60), "12m")
+        XCTAssertEqual(MenuBarController.formatElapsed(3_600), "1h 0m")
+        XCTAssertEqual(MenuBarController.formatElapsed(3 * 3_600 + 42 * 60), "3h 42m")
+        XCTAssertEqual(MenuBarController.formatElapsed(2 * 86_400 + 5 * 3_600), "2d 5h")
+        XCTAssertEqual(MenuBarController.formatElapsed(-5), "0s", "Negative spans clamp to zero.")
+    }
 }

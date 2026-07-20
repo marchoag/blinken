@@ -27,6 +27,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     private let readItem = NSMenuItem(title: "Read:  —", action: nil, keyEquivalent: "")
     private let writeItem = NSMenuItem(title: "Write:  —", action: nil, keyEquivalent: "")
+    private let sessionItem = NSMenuItem(title: "Measuring for —", action: nil, keyEquivalent: "")
     private let ramItem = NSMenuItem(title: "RAM used:  —", action: nil, keyEquivalent: "")
     private let swapItem = NSMenuItem(title: "Swap used:  —", action: nil, keyEquivalent: "")
     private let pressureItem = NSMenuItem(title: "Pressure:  —", action: nil, keyEquivalent: "")
@@ -111,6 +112,9 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         menu.addItem(diskHeader)
         menu.addItem(readItem)
         menu.addItem(writeItem)
+        sessionItem.action = #selector(resetCounters)
+        sessionItem.target = self
+        menu.addItem(sessionItem)
         menu.addItem(.separator())
 
         let memoryHeader = NSMenuItem(title: "Memory", action: nil, keyEquivalent: "")
@@ -151,10 +155,15 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     private func refreshRates() {
         // Disk amounts only — the menu is the odometer; the LED conveys live rate.
-        //   primary = bytes since app launch (this session)
-        //   parens  = bytes since last reboot (raw IOKit counter)
-        readItem.title  = "Read:   \(Self.formatBytes(aggregator.sessionBytesRead))   (\(Self.formatBytes(aggregator.totalBytesRead)))"
-        writeItem.title = "Write:   \(Self.formatBytes(aggregator.sessionBytesWritten))   (\(Self.formatBytes(aggregator.totalBytesWritten)))"
+        // One number per row, measured from a user-controllable anchor. (Through
+        // 1.0.1 each row also carried a since-boot figure in parentheses; for anyone
+        // launching Blinken at login the two were near-identical, and an
+        // ever-growing since-boot total isn't something you can act on.)
+        readItem.title  = "Read:   \(Self.formatBytes(aggregator.sessionBytesRead))"
+        writeItem.title = "Write:   \(Self.formatBytes(aggregator.sessionBytesWritten))"
+        // The span is what makes the totals interpretable — "1.55 TB" says nothing
+        // without it — and clicking the row rebases both to now.
+        sessionItem.title = "Measuring for \(Self.formatElapsed(aggregator.sessionElapsedSeconds))   ·   Reset"
 
         // Memory: RAM used (% of total) + Swap used (absolute) + pressure level.
         // The earlier "% of RAM" parenthetical on the swap line read ambiguously
@@ -181,7 +190,30 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         return ByteCountFormatter.string(fromByteCount: capped, countStyle: .memory)
     }
 
+    /// Compact span for the session odometer: "47s", "12m", "3h 42m", "2d 5h".
+    /// Deliberately coarse — this is context for the byte totals, not a stopwatch,
+    /// so the largest two units are enough at every scale.
+    static func formatElapsed(_ seconds: Double) -> String {
+        let total = Int(max(0, seconds))
+        let (days, hours) = (total / 86_400, (total % 86_400) / 3_600)
+        let (minutes, secs) = ((total % 3_600) / 60, total % 60)
+        switch total {
+        case ..<60:     return "\(secs)s"
+        case ..<3_600:  return "\(minutes)m"
+        case ..<86_400: return "\(hours)h \(minutes)m"
+        default:        return "\(days)d \(hours)h"
+        }
+    }
+
     // MARK: - Actions
+
+    /// Rebases the disk odometer to now. The menu is open when this fires, so the
+    /// 1Hz refresh timer repaints the zeroed rows on its next tick; refreshing here
+    /// too makes it feel instant rather than up-to-a-second late.
+    @objc private func resetCounters() {
+        aggregator.resetSessionCounters()
+        refreshRates()
+    }
 
     /// Opens (or re-focuses) the preferences window. We host `PreferencesView` in
     /// our own `NSWindow` rather than the SwiftUI `Settings` scene — for an
