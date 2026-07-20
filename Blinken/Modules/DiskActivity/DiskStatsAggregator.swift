@@ -68,11 +68,18 @@ final class DiskStatsAggregator: ObservableObject {
     /// Cumulative bytes written — the latest raw IOKit counter.
     @Published private(set) var totalBytesWritten: UInt64 = 0
 
-    /// Bytes read since the app launched (the session odometer). Resets only on
-    /// app restart; the parenthetical `totalBytesRead` resets only on system restart.
+    /// Bytes read since the session odometer was last rebased — app launch, or the
+    /// user's last `resetSessionCounters()`. The raw `totalBytesRead` counter above
+    /// is untouched by a reset.
     @Published private(set) var sessionBytesRead: UInt64 = 0
-    /// Bytes written since the app launched.
+    /// Bytes written since the session odometer was last rebased.
     @Published private(set) var sessionBytesWritten: UInt64 = 0
+
+    /// Measured seconds covered by the session odometer. Derived from the sampler's
+    /// `systemUptime` clock, which does not advance while the Mac sleeps — so this
+    /// counts only time during which I/O could actually have accrued, which is what
+    /// makes the byte totals interpretable.
+    @Published private(set) var sessionElapsedSeconds: Double = 0
 
     /// EMA time constant (seconds) for the smoothed menu rates.
     nonisolated static let menuRateTimeConstant: Double = 1.0
@@ -90,9 +97,11 @@ final class DiskStatsAggregator: ObservableObject {
     private var prevBytesRead: UInt64 = 0
     private var prevBytesWritten: UInt64 = 0
 
-    // Captured on first ingest; sessionBytesRead/Written are deltas from these.
+    // Captured on first ingest and re-captured on reset; sessionBytesRead/Written
+    // are deltas from these.
     private var sessionBaselineRead: UInt64 = 0
     private var sessionBaselineWritten: UInt64 = 0
+    private var sessionBaselineTimestamp: Double = 0
     private var hasSessionBaseline = false
 
     // MARK: - Ingest
@@ -111,10 +120,14 @@ final class DiskStatsAggregator: ObservableObject {
         if !hasSessionBaseline {
             sessionBaselineRead = totalBytesRead
             sessionBaselineWritten = totalBytesWritten
+            sessionBaselineTimestamp = timestamp
             hasSessionBaseline = true
         }
         sessionBytesRead = Self.cumulativeDelta(baseline: sessionBaselineRead, current: totalBytesRead)
         sessionBytesWritten = Self.cumulativeDelta(baseline: sessionBaselineWritten, current: totalBytesWritten)
+        // Clamped: a caller feeding an out-of-order timestamp shouldn't produce a
+        // negative "measuring for" reading in the menu.
+        sessionElapsedSeconds = max(0, timestamp - sessionBaselineTimestamp)
 
         defer {
             prevTimestamp = timestamp
@@ -152,6 +165,25 @@ final class DiskStatsAggregator: ObservableObject {
 
         appendToRing(totalRate)
         rolling60sP95 = max(percentile95(), Self.p95FloorBytesPerSec)
+    }
+
+    // MARK: - Session odometer reset
+
+    /// Rebase the session odometer to now: read/written totals return to zero and
+    /// the elapsed clock restarts. The raw IOKit counters, the rate signals, and the
+    /// P95 ceiling are all untouched — this only moves the "measuring since" anchor.
+    ///
+    /// No-op before the first sample: there is nothing to rebase onto yet, and the
+    /// first `ingest` will set the baseline anyway. (Rebasing onto the pre-ingest
+    /// zeros would make the next sample report the entire since-boot total.)
+    func resetSessionCounters() {
+        guard hasSessionBaseline else { return }
+        sessionBaselineRead = totalBytesRead
+        sessionBaselineWritten = totalBytesWritten
+        sessionBaselineTimestamp = prevTimestamp
+        sessionBytesRead = 0
+        sessionBytesWritten = 0
+        sessionElapsedSeconds = 0
     }
 
     // MARK: - Delta with rollover / reset handling
