@@ -23,15 +23,27 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 SKIP_NOTARIZE=0
-[[ "${1:-}" == "--skip-notarize" ]] && SKIP_NOTARIZE=1
+PACKAGE_ONLY=0
+APP_IN=""
+case "${1:-}" in
+    --skip-notarize) SKIP_NOTARIZE=1 ;;
+    # Xcode's Organizer ▸ Distribute App ▸ Direct Distribution already archives,
+    # signs, notarizes, and staples — but it stops at a .app and can't build a
+    # DMG. This mode picks up from there: hand it the exported app and it does
+    # only the packaging half.
+    --package-only)  PACKAGE_ONLY=1; APP_IN="${2:-}" ;;
+    "") ;;
+    *) printf 'usage: %s [--skip-notarize | --package-only [path/to/Blinken.app]]\n' "$0" >&2; exit 2 ;;
+esac
 
 # Apple Team ID that owns the Developer ID cert (the Axiomic, LLC team — not a
 # personal Apple Development team, which can't be notarized). Not a secret: it's
 # readable via `codesign -dvvv` on any shipped build. Kept out of the repo anyway
 # to match the build guide's choice to omit DEVELOPMENT_TEAM from project.yml.
 #   export BLINKEN_TEAM_ID=XXXXXXXXXX
+# Not needed for --package-only: nothing is built or signed by us in that mode.
 readonly TEAM_ID="${BLINKEN_TEAM_ID:-}"
-[[ -n "${TEAM_ID}" ]] || {
+[[ -n "${TEAM_ID}" || ${PACKAGE_ONLY} -eq 1 ]] || {
     printf '\n❌ BLINKEN_TEAM_ID is not set.\n' >&2
     printf '   It is the 10-character Apple Team ID owning the Developer ID cert.\n' >&2
     printf '   Recover it from the last shipped build:\n' >&2
@@ -69,28 +81,77 @@ IDENTITY=$(security find-identity -v -p codesigning \
            | head -1 \
            | sed -E 's/.*"(.+)"/\1/') || true
 
-if [[ ${SKIP_NOTARIZE} -eq 0 ]]; then
+if [[ ${SKIP_NOTARIZE} -eq 0 && ${PACKAGE_ONLY} -eq 0 ]]; then
     xcrun notarytool history --keychain-profile "${NOTARY_PROFILE}" >/dev/null 2>&1 \
         || die "Notary profile '${NOTARY_PROFILE}' not found in the keychain.
    Fix (interactive — needs an app-specific password from appleid.apple.com):
         xcrun notarytool store-credentials \"${NOTARY_PROFILE}\" \\
-          --apple-id <your-apple-id> --team-id ${TEAM_ID}"
+          --apple-id <your-apple-id> --team-id ${TEAM_ID}
+   Or skip the CLI entirely: Xcode ▸ Product ▸ Archive ▸ Distribute App ▸
+   Direct Distribution, then:  ./scripts/release.sh --package-only <exported.app>"
 fi
 
 VERSION=$(grep 'MARKETING_VERSION:' project.yml | sed -E 's/.*"(.+)".*/\1/')
 BUILD_NUM=$(grep 'CURRENT_PROJECT_VERSION:' project.yml | sed -E 's/.*"(.+)".*/\1/')
 [[ -n "${VERSION}" ]] || die "Could not read MARKETING_VERSION from project.yml"
 
-if [[ -n "${IDENTITY}" ]]; then
+if [[ ${PACKAGE_ONLY} -eq 1 ]]; then
+    printf '   mode     : package-only (app already built + notarized by Xcode)\n'
+    # Labelled as project.yml's, since the packaged app is the real authority here.
+    printf '   project.yml says: %s (build %s)\n' "${VERSION}" "${BUILD_NUM}"
+elif [[ -n "${IDENTITY}" ]]; then
     printf '   identity : %s\n' "${IDENTITY}"
 else
     printf '   identity : (none local — relying on Xcode-managed signing, team %s)\n' "${TEAM_ID}"
 fi
-printf '   version  : %s (build %s)\n' "${VERSION}" "${BUILD_NUM}"
+[[ ${PACKAGE_ONLY} -eq 1 ]] || printf '   version  : %s (build %s)\n' "${VERSION}" "${BUILD_NUM}"
+
+# ── Package-only: validate Xcode's output, then jump straight to packaging ────
+# Everything Xcode's Direct Distribution flow already did is trusted but verified
+# — the two failure modes worth catching are an Apple Development signature
+# (won't pass Gatekeeper elsewhere) and a missing notarization ticket (shows the
+# "cannot be opened" dialog on any Mac that can't reach Apple at first launch).
+
+if [[ ${PACKAGE_ONLY} -eq 1 ]]; then
+    [[ -n "${APP_IN}" ]] || APP_IN="${BUILD_DIR}/Blinken.app"
+    [[ -d "${APP_IN}" ]] || die "No app bundle at '${APP_IN}'.
+   Pass the path Xcode exported:  ./scripts/release.sh --package-only ~/Desktop/Blinken.app"
+
+    step "Validating ${APP_IN}"
+
+    APP_SIG=$(codesign -dvvv "${APP_IN}" 2>&1 || true)
+    grep -q "Authority=Developer ID Application" <<<"${APP_SIG}" \
+        || die "Not signed with a Developer ID Application cert.
+   Signed with: $(grep -m1 'Authority=' <<<"${APP_SIG}" || echo '(none)')
+   In Xcode, Distribute App ▸ Direct Distribution (not Debugging/Testing)."
+
+    xcrun stapler validate "${APP_IN}" >/dev/null 2>&1 \
+        || die "No notarization ticket stapled to this app.
+   In Organizer, the archive must finish notarizing (status 'Ready to distribute')
+   before you export it."
+
+    APP_VERSION=$(defaults read "$(cd "$(dirname "${APP_IN}")" && pwd)/$(basename "${APP_IN}")/Contents/Info.plist" \
+                  CFBundleShortVersionString 2>/dev/null || echo "?")
+    printf '   signed   : %s\n' "$(grep -m1 'Authority=' <<<"${APP_SIG}" | sed 's/Authority=//')"
+    printf '   stapled  : yes\n'
+    printf '   version  : %s\n' "${APP_VERSION}"
+    [[ "${APP_VERSION}" == "${VERSION}" ]] \
+        || printf '\n⚠️  App is %s but project.yml says %s — check you exported the right archive.\n' \
+                  "${APP_VERSION}" "${VERSION}"
+
+    # Stage into build/ so the packaging step below is identical in both modes.
+    mkdir -p "${BUILD_DIR}"
+    [[ "$(cd "$(dirname "${APP_IN}")" && pwd)/$(basename "${APP_IN}")" == "$(pwd)/${BUILD_DIR}/Blinken.app" ]] \
+        || { rm -rf "${BUILD_DIR}/Blinken.app"; cp -R "${APP_IN}" "${BUILD_DIR}/Blinken.app"; }
+fi
 
 # ── 1. Regenerate + clean build ──────────────────────────────────────────────
 # project.yml is the source of truth and .xcodeproj is gitignored, so a stale
 # generated project will happily ship yesterday's version number.
+#
+# Steps 1-5 are Xcode's job in --package-only mode; skip straight to packaging.
+
+if [[ ${PACKAGE_ONLY} -eq 0 ]]; then
 
 step "Generating project from project.yml"
 xcodegen generate
@@ -183,6 +244,8 @@ else
     spctl -a -vvv "${BUILD_DIR}/Blinken.app"
 fi
 
+fi  # end: steps 1-5, skipped in --package-only mode
+
 # ── 6. Package the (now stapled) app ─────────────────────────────────────────
 
 step "Packaging DMG"
@@ -228,12 +291,21 @@ fi
 
 [[ ${SKIP_NOTARIZE} -eq 1 ]] && { printf '\n⚠️  %s is NOT distributable (unnotarized).\n' "${DMG}"; exit 0; }
 
+# Report the version of the app actually inside the DMG, not project.yml's. In
+# --package-only mode the app comes from Xcode and can be from a different build
+# than the working tree — printing project.yml's number there would label the
+# release with a version it doesn't contain.
+SHIPPED_VERSION=$(defaults read "$(pwd)/${BUILD_DIR}/Blinken.app/Contents/Info.plist" \
+                  CFBundleShortVersionString 2>/dev/null || echo "${VERSION}")
+SHIPPED_BUILD=$(defaults read "$(pwd)/${BUILD_DIR}/Blinken.app/Contents/Info.plist" \
+                CFBundleVersion 2>/dev/null || echo "${BUILD_NUM}")
+
 cat <<EOF
 
-✅ ${DMG}  —  v${VERSION} (build ${BUILD_NUM})
+✅ ${DMG}  —  v${SHIPPED_VERSION} (build ${SHIPPED_BUILD})   ← version read from the packaged app
 
 Next:
-  1. gh release create v${VERSION} ${DMG} --title "Blinken ${VERSION}" --notes-file CHANGELOG.md
+  1. gh release create v${SHIPPED_VERSION} ${DMG} --title "Blinken ${SHIPPED_VERSION}" --notes-file CHANGELOG.md
      (the asset MUST upload as exactly "Blinken.dmg" — the site's download
       permalink resolves by filename)
   2. Deploy the site from /Users/marchoag/dev/Axiomic (labs.axiomic.ai/blinken)
